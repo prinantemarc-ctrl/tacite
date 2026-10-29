@@ -1,0 +1,151 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ═══════════════════════════════════════════════════════════════════════
+   TACITE — design system, dérivé du kit rapport Gorgone.
+
+   Palette close : papier / encre / gris / bronze, plus le rouge sourd
+   réservé aux alertes et aux statuts. Aucune autre couleur. Les tokens
+   sont ceux du kit (moteur/style.css) ; les dérivés sont les mêmes
+   color-mix, pré-calculés en oklch pour Tailwind.
+═══════════════════════════════════════════════════════════════════════ */
+
+@font-face {
+  font-family: "Geist";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fonts/geist.woff2) format("woff2-variations"), url(/fonts/geist.woff2) format("woff2");
+}
+@font-face {
+  font-family: "Geist Mono";
+  font-style: normal;
+  font-weight: 100 900;
+  font-display: swap;
+  src: url(/fonts/geist-mono.woff2) format("woff2-variations"), url(/fonts/geist-mono.woff2) format("woff2");
+}
+
+@theme {
+  /* On ferme la palette Tailwind : seuls les tokens ci-dessous existent. */
+  --color-*: initial;
+
+  --color-paper: oklch(1 0 0);              /* fond de page, cartes */
+  --color-ink: oklch(0.13 0 0);             /* texte principal */
+  --color-muted: oklch(0.46 0 0);           /* texte secondaire */
+  --color-faint: oklch(0.665 0 0);          /* légendes — muted 62 % / paper */
+  --color-accent: oklch(0.5 0.07 96);       /* bronze #6E6230 */
+  --color-accent-strong: oklch(0.43 0.065 96); /* bronze tiré vers le noir 16 % */
+  --color-hair: oklch(0.91 0 0);            /* filets, bordures */
+  --color-hair-soft: oklch(0.946 0 0);      /* filets très fins */
+  --color-surface: oklch(0.96 0 0);         /* fond d'encadré */
+  --color-tint: oklch(0.96 0.005 96);       /* bronze pâle — en-têtes de tableau */
+  --color-destructive: oklch(0.577 0.245 27.325);
+  --color-confidential: oklch(0.45 0.18 27); /* destructive 72 % / encre — statut, pas alerte */
+  --color-transparent: transparent;
+
+  --font-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-kit: 5px;
+  --radius-sm: 3px;
+  --radius-pill: 999px;
+
+  --tracking-label: 0.14em;
+  --tracking-kicker: 0.22em;
+  --tracking-tool: 0.34em;
+}
+
+/* Hors @layer : @theme écrit :root hors couche, il faut gagner en spécificité. */
+html.dark {
+  color-scheme: dark;
+  --color-paper: oklch(0.205 0.008 96);
+  --color-ink: oklch(0.935 0.008 96);
+  --color-muted: oklch(0.70 0.014 92);
+  --color-faint: oklch(0.555 0.012 90);
+  --color-accent: oklch(0.76 0.08 92);
+  --color-accent-strong: oklch(0.82 0.07 92);
+  --color-hair: oklch(0.305 0.01 96);
+  --color-hair-soft: oklch(0.265 0.008 96);
+  --color-surface: oklch(0.245 0.008 96);
+  --color-tint: oklch(0.27 0.022 92);
+  --color-destructive: oklch(0.68 0.18 25);
+  --color-confidential: oklch(0.65 0.14 25);
+}
+
+@layer base {
+  *, ::before, ::after { border-color: var(--color-hair); }
+
+  html, body, #root { height: 100%; }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1, "liga" 1;
+    hyphens: none;
+  }
+  html:not(.dark) { color-scheme: light; }
+  body {
+    @apply bg-paper text-ink font-sans text-[13px] leading-[1.58];
+  }
+  ::selection { background: var(--color-tint); color: var(--color-accent-strong); }
+
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--color-hair); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-faint); }
+
+  a { text-underline-offset: 2px; }
+  :focus-visible { outline: 1.5px solid var(--color-accent); outline-offset: 1px; }
+
+  input, select, textarea, button { font: inherit; color: inherit; }
+  input::placeholder, textarea::placeholder { color: var(--color-faint); }
+  select { appearance: none; }
+  input[type="number"]::-webkit-inner-spin-button { opacity: 0.4; }
+
+  details > summary { list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+}
+
+@layer components {
+  /* Étiquette de rubrique — petites capitales bronze (h4 / p.label-only du kit) */
+  .label {
+    @apply text-[10px] font-bold uppercase tracking-label text-accent-strong;
+  }
+  /* Surtitre — « RAPPORT D'ANALYSE » */
+  .kicker {
+    @apply text-[10px] font-semibold uppercase tracking-kicker text-accent-strong;
+  }
+  /* Filet de clôture court et centré (section::after du kit) */
+  .closing-rule {
+    @apply mx-auto h-[1.5px] w-16 bg-accent opacity-45;
+  }
+  .field {
+    @apply w-full rounded-sm border border-hair bg-paper px-2.5 py-1.5 text-[13px] text-ink
+           transition-colors hover:border-faint focus:border-accent focus:outline-none;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* Markdown de l'assistant */
+  .md { @apply text-[13.5px] leading-[1.6] text-ink; }
+  .md-compact { @apply text-[13px]; }
+  .md > :first-child { margin-top: 0; }
+  .md > :last-child { margin-bottom: 0; }
+  .md p { @apply my-2; }
+  .md h1, .md h2 { @apply mb-1.5 mt-5 border-b border-hair pb-1 text-[10.5px] font-bold uppercase tracking-label text-accent-strong; }
+  .md h3 { @apply mb-1 mt-4 text-[13.5px] font-semibold; }
+  .md ul { @apply my-2 list-disc pl-5; }
+  .md ol { @apply my-2 list-decimal pl-5; }
+  .md li { @apply my-0.5; }
+  .md li > p { @apply my-0.5; }
+  .md strong { @apply font-semibold text-ink; }
+  .md em { @apply italic; }
+  .md code { @apply rounded-[2px] bg-surface px-1 py-[1px] font-mono text-[12px]; }
+  .md pre { @apply my-2 overflow-x-auto rounded-sm border border-hair bg-surface p-3 text-[12px]; }
+  .md pre code { @apply bg-transparent p-0; }
+  .md blockquote { @apply my-2 border-l-2 border-accent pl-3 text-muted; }
+  .md hr { @apply my-4 border-hair; }
+  .md table { @apply w-full border-collapse text-[12.5px]; }
+  .md th { @apply border-b border-hair px-2 py-1.5 text-left text-[10px] font-bold uppercase tracking-label text-accent-strong; }
+  .md td { @apply border-b border-hair-soft px-2 py-1.5 align-top; }
+  .md tbody tr:nth-child(even) td { @apply bg-surface/40; }
+}

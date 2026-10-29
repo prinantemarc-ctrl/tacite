@@ -1,0 +1,73 @@
+{
+  "name": "tacite-desktop",
+  "productName": "Tacite",
+  "version": "0.4.0",
+  "description": "Tacite — Intelligence presse",
+  "private": true,
+  "type": "module",
+  "main": "main.mjs",
+  "scripts": {
+    "start": "electron .",
+    "pack": "electron-builder --mac dir",
+    "dist": "electron-builder --mac dmg"
+  },
+  "author": "Tacite",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "electron": "^33.4.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "io.tacite.desktop",
+    "productName": "Tacite",
+    "copyright": "Tacite",
+    "files": [
+      "main.mjs",
+      "preload.cjs",
+      "splash.html",
+      "splash.js",
+      "server.json",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      { "from": "build/icon.png", "to": "icon.png" },
+      { "from": "stack/docker-compose.yml", "to": "stack/docker-compose.yml" },
+      {
+        "from": "../backend",
+        "to": "stack/backend",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc", "!**/.pytest_cache/**", "!**/.venv/**"]
+      },
+      {
+        "from": "../frontend",
+        "to": "stack/frontend",
+        "filter": ["**/*", "!**/node_modules/**", "!**/dist/**"]
+      }
+    ],
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "mac": {
+      "icon": "build/icon.icns",
+      "category": "public.app-category.productivity",
+      "target": [
+        "dir",
+        "dmg"
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "extendInfo": {
+        "NSHighResolutionCapable": true
+      }
+    },
+    "dmg": {
+      "title": "Tacite",
+      "icon": "build/icon.icns",
+      "contents": [
+        { "x": 160, "y": 180, "type": "file" },
+        { "x": 420, "y": 180, "type": "link", "path": "/Applications" }
+      ]
+    }
+  }
+}

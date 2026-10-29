@@ -1,0 +1,67 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tacite
+      POSTGRES_PASSWORD: tacite
+      POSTGRES_DB: tacite
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tacite"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      TACITE_TOKEN: ${TACITE_TOKEN:-}
+      HF_HOME: /hf-cache
+      ARTIFACTS_DIR: /data/artifacts
+    volumes:
+      - hf-cache:/hf-cache
+      - artifacts:/data/artifacts
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    build: ./backend
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: ${DATABASE_URL}
+      LLM_API_KEY: ${LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      TACITE_TOKEN: ${TACITE_TOKEN:-}
+      HF_HOME: /hf-cache
+    volumes:
+      - hf-cache:/hf-cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    build: ./frontend
+    environment:
+      VITE_PROXY_TARGET: http://api:8000
+    ports:
+      - "5173:5173"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  hf-cache:
+  artifacts:

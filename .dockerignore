@@ -1,0 +1,15 @@
+.git
+**/.git
+**/node_modules
+frontend/dist
+desktop/node_modules
+desktop/dist
+desktop/images
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+.hf-cache
+**/.DS_Store
+.env
+*.log

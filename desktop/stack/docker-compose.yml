@@ -1,0 +1,64 @@
+# Stack locale embarquée dans l'application Mac.
+# Les images déjà présentes sont réutilisées ; sinon elles sont construites ici.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: tacite
+      POSTGRES_PASSWORD: tacite
+      POSTGRES_DB: tacite
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tacite"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: tacite-api:0.3.0
+    build: ./backend
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql+psycopg://tacite:tacite@db:5432/tacite
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      HF_HOME: /hf-cache
+      ARTIFACTS_DIR: /data/artifacts
+    volumes:
+      - hf-cache:/hf-cache
+      - artifacts:/data/artifacts
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker:
+    image: tacite-api:0.3.0
+    build: ./backend
+    command: python -m app.worker
+    environment:
+      DATABASE_URL: postgresql+psycopg://tacite:tacite@db:5432/tacite
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      HF_HOME: /hf-cache
+    volumes:
+      - hf-cache:/hf-cache
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: tacite-web:0.3.0
+    build: ./frontend
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  hf-cache:
+  artifacts:

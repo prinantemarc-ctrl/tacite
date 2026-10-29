@@ -1,0 +1,55 @@
+# Une base Postgres (pgvector), l'application, et le worker de collecte.
+# Région Francfort. Les services payants sont nécessaires : le moteur
+# (modèles, embeddings) ne tient pas dans 512 Mo.
+databases:
+  - name: tacite-db
+    databaseName: tacite
+    user: tacite
+    plan: 0.5c-1g
+    region: frankfurt
+    postgresMajorVersion: "16"
+
+services:
+  - type: web
+    name: tacite
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    region: frankfurt
+    plan: 1c-2g
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tacite-db
+          property: connectionString
+      - key: LLM_BASE_URL
+        value: https://inference.aleria.com/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: STATIC_DIR
+        value: /srv/static
+      - key: ARTIFACTS_DIR
+        value: /tmp/tacite-artifacts
+      - key: HF_HOME
+        value: /tmp/hf
+
+  - type: worker
+    name: tacite-worker
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: python -m app.worker
+    region: frankfurt
+    plan: 1c-2g
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: tacite-db
+          property: connectionString
+      - key: LLM_BASE_URL
+        value: https://inference.aleria.com/v1
+      - key: LLM_API_KEY
+        sync: false
+      - key: HF_HOME
+        value: /tmp/hf
