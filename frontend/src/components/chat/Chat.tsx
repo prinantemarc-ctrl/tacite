@@ -8,6 +8,7 @@ import { Loading } from "../../components";
 import { useI18n, translate } from "../../i18n/I18nProvider";
 import { TOOLS_EN, TOOLS_FR } from "../../i18n/messages";
 import { getLocale } from "../../i18n/locale";
+import { isDesktop, pickNativeFiles, takePendingAttachments } from "../../desktop";
 
 type Part = any;
 type Msg = { id?: number; role: "user" | "assistant"; content: string; parts: Part[]; streaming?: boolean; cost_usd?: number };
@@ -175,12 +176,21 @@ export default function Chat({ conversationId, onConversationCreated, context, c
   const onKey = (e: KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); }
   };
-  const onFiles = async (files: FileList | null) => {
+  const onFiles = async (files: FileList | File[] | null) => {
     if (!files) return;
     for (const f of Array.from(files)) {
       try { const r = await uploadAttachment(f); setAttachments((a) => [...a, r]); } catch (err: any) { alert(tr("chat.attachRefused", { msg: err.message })); }
     }
   };
+  useEffect(() => {
+    const pull = () => {
+      const pending = takePendingAttachments();
+      if (pending.length) setAttachments((a) => [...a, ...pending]);
+    };
+    pull();
+    window.addEventListener("tacite-attachments", pull);
+    return () => window.removeEventListener("tacite-attachments", pull);
+  }, []);
   const stop = () => abortRef.current?.abort();
 
   const setAction = (actionId: number, status: string) => setMsgs((m) => m.map((msg) => ({ ...msg, parts: msg.parts.map((p) => (p.type === "confirm" && p.action_id === actionId ? { ...p, status } : p)) })));
@@ -222,7 +232,14 @@ export default function Chat({ conversationId, onConversationCreated, context, c
             </div>
           )}
           <div className="flex items-end gap-2 rounded-kit border border-hair bg-paper px-3 py-2 focus-within:border-accent">
-            <button className="mb-[3px] text-faint hover:text-ink" onClick={() => fileRef.current?.click()} title={tr("chat.attach")}><Paperclip size={15} /></button>
+            <button className="mb-[3px] text-faint hover:text-ink" onClick={async () => {
+              if (isDesktop()) {
+                const files = await pickNativeFiles("documents");
+                if (files.length) onFiles(files);
+                return;
+              }
+              fileRef.current?.click();
+            }} title={tr("chat.attach")}><Paperclip size={15} /></button>
             <input ref={fileRef} type="file" multiple className="hidden" onChange={(e) => onFiles(e.target.files)} accept=".txt,.md,.csv,.pdf,.docx,.xlsx,.html,.json" />
             <textarea
               ref={taRef} value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={onKey} rows={1}

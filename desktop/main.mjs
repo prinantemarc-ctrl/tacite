@@ -1,21 +1,26 @@
-import { app, BrowserWindow, Menu, dialog, ipcMain, shell, nativeTheme } from "electron";
-import { execFile } from "node:child_process";
-import { copyFileSync, existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { app, BrowserWindow, Menu, Notification, dialog, ipcMain, shell, nativeTheme } from "electron";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 
-const execFileAsync = promisify(execFile);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-let webOrigin = "http://MacBook-Pro-de-MP.local:5173";
-const PROJECT_NAME = "pressanalysis";
-const API_IMAGE = "tacite-api:0.3.0";
-const WEB_IMAGE = "tacite-web:0.3.0";
-const DB_IMAGE = "pgvector/pgvector:pg16";
-const STATE_FILE = () => join(app.getPath("userData"), "project-root.txt");
+let webOrigin = "https://tacite-zs2b.onrender.com";
 const CURSOR_MCP_FILE = () => join(homedir(), ".cursor", "mcp.json");
+const MAX_FILE = 20 * 1024 * 1024;
+
+const MIME = {
+  ".pdf": "application/pdf",
+  ".html": "text/html",
+  ".htm": "text/html",
+  ".txt": "text/plain",
+  ".md": "text/markdown",
+  ".csv": "text/csv",
+  ".json": "application/json",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
 
 function pageUrl() {
   return `${webOrigin}/`;
@@ -25,6 +30,27 @@ function healthUrl() {
 }
 function mcpUrl() {
   return new URL("api/mcp", pageUrl()).href;
+}
+
+let mainWindow = null;
+let starting = false;
+
+function appIconPng() {
+  const packaged = join(process.resourcesPath, "icon.png");
+  const local = join(__dirname, "build/icon.png");
+  return existsSync(packaged) ? packaged : local;
+}
+
+function sendStatus(payload) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("status", payload);
+  }
+}
+
+function sendMenu(action) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("menu", { action });
+  }
 }
 
 async function connectToCursor(opts = { showDialog: true }) {
@@ -54,7 +80,7 @@ async function connectToCursor(opts = { showDialog: true }) {
         type: "info",
         title: "Connecté à Cursor",
         message: "Tacite est maintenant connecté à Cursor (MCP).",
-        detail: `Le serveur MCP « tacite » (${entry.url}) a été enregistré dans ~/.cursor/mcp.json avec ses outils et la Doctrine Press Intelligence.`,
+        detail: `Le serveur MCP « tacite » (${entry.url}) a été enregistré dans ~/.cursor/mcp.json.`,
       });
     }
     return { ok: true, path: mcpPath, url: entry.url };
@@ -71,98 +97,13 @@ async function connectToCursor(opts = { showDialog: true }) {
   }
 }
 
-function appIconPng() {
-  const packaged = join(process.resourcesPath, "icon.png");
-  const local = join(__dirname, "build/icon.png");
-  return existsSync(packaged) ? packaged : local;
-}
-
-let mainWindow = null;
-let starting = false;
-
-function dockerEnv() {
-  const extras = [
-    "/opt/homebrew/bin",
-    "/usr/local/bin",
-    join(homedir(), ".docker/bin"),
-    "/Applications/Docker.app/Contents/Resources/bin",
-  ];
-  return { ...process.env, PATH: `${extras.join(":")}:${process.env.PATH || ""}` };
-}
-
-function dockerBin() {
-  const candidates = [
-    "/usr/local/bin/docker",
-    "/opt/homebrew/bin/docker",
-    join(homedir(), ".docker/bin/docker"),
-    "/Applications/Docker.app/Contents/Resources/bin/docker",
-  ];
-  return candidates.find((p) => existsSync(p)) || "docker";
-}
-
-async function runDocker(args, opts = {}) {
-  return execFileAsync(dockerBin(), args, {
-    env: dockerEnv(),
-    timeout: opts.timeout ?? 180_000,
-    maxBuffer: 20_000_000,
-    cwd: opts.cwd,
-  });
-}
-
-function sendStatus(payload) {
-  if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send("status", payload);
-  }
-}
-
-function isComposeRoot(dir) {
-  return dir && existsSync(join(dir, "docker-compose.yml"));
-}
-
-function stackDir() {
-  if (app.isPackaged) return join(process.resourcesPath, "stack");
-  const fromSource = join(__dirname, "..");
-  if (isComposeRoot(fromSource)) return fromSource;
-  return join(process.resourcesPath, "stack");
-}
-
-function discoverEnvSource() {
-  const candidates = [];
-  try {
-    const saved = readFileSync(STATE_FILE(), "utf8").trim();
-    if (saved) candidates.push(join(saved, ".env"));
-  } catch { /* pas encore de dossier enregistré */ }
-  candidates.push(join(__dirname, "..", ".env"));
-  return candidates.find((p) => existsSync(p)) || null;
-}
-
-function ensureEnvFile() {
-  const dest = join(app.getPath("userData"), "stack.env");
-  if (!existsSync(dest)) {
-    mkdirSync(app.getPath("userData"), { recursive: true });
-    const src = discoverEnvSource();
-    if (src) copyFileSync(src, dest);
-    else writeFileSync(dest, "LLM_API_KEY=\nLLM_BASE_URL=https://inference.aleria.com/v1\n");
-  }
-  return dest;
-}
-
-async function hasImage(name) {
-  try {
-    await runDocker(["image", "inspect", name], { timeout: 15_000 });
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function waitFor(url, timeoutMs, ok = (r) => r.ok) {
+async function waitFor(url, timeoutMs) {
   const start = Date.now();
   let last = "";
   while (Date.now() - start < timeoutMs) {
     try {
-      const r = await fetch(url, { signal: AbortSignal.timeout(2500) });
-      if (ok(r)) return;
+      const r = await fetch(url, { signal: AbortSignal.timeout(4000) });
+      if (r.ok) return;
       last = `HTTP ${r.status}`;
     } catch (e) {
       last = e.cause?.code || e.message || "injoignable";
@@ -170,47 +111,6 @@ async function waitFor(url, timeoutMs, ok = (r) => r.ok) {
     await new Promise((r) => setTimeout(r, 800));
   }
   throw new Error(`Pas de réponse (${last})`);
-}
-
-async function ensureDocker() {
-  try {
-    await runDocker(["info"], { timeout: 8000 });
-    return;
-  } catch {
-    sendStatus({ message: "Ouverture de Docker Desktop…" });
-    await execFileAsync("open", ["-a", "Docker"], { timeout: 10_000 }).catch(() => {
-      throw new Error("Docker Desktop est introuvable. Installez-le, puis réessayez.");
-    });
-  }
-  const start = Date.now();
-  while (Date.now() - start < 90_000) {
-    try {
-      await runDocker(["info"], { timeout: 5000 });
-      return;
-    } catch {
-      await new Promise((r) => setTimeout(r, 1500));
-    }
-  }
-  throw new Error("Docker Desktop ne répond pas. Ouvrez-le, attendez le témoin vert, puis réessayez.");
-}
-
-async function startStack(root) {
-  const local = (await hasImage(API_IMAGE)) && (await hasImage(WEB_IMAGE)) && (await hasImage(DB_IMAGE));
-  if (local) sendStatus({ message: "Démarrage de Tacite sur cet ordinateur…" });
-  else sendStatus({ message: "Installation de Tacite sur cet ordinateur. La première fois peut prendre un moment…" });
-  const args = [
-    "compose",
-    "--env-file", ensureEnvFile(),
-    "-f", join(root, "docker-compose.yml"),
-    "-p", PROJECT_NAME,
-    "up", "-d",
-  ];
-  if (local) args.push("--pull", "never");
-  else args.push("--build");
-  await runDocker(args, { cwd: root, timeout: 1_800_000 });
-  sendStatus({ message: "Attente de l’interface…" });
-  await waitFor(healthUrl(), 180_000);
-  await waitFor(pageUrl(), 60_000);
 }
 
 function loadServerOrigin() {
@@ -234,14 +134,14 @@ async function boot() {
   starting = true;
   try {
     loadServerOrigin();
-    sendStatus({ message: "Connexion à la base Tacite…" });
-    await waitFor(healthUrl(), 20_000);
+    sendStatus({ message: "Connexion à Tacite…" });
+    await waitFor(healthUrl(), 25_000);
     if (mainWindow && !mainWindow.isDestroyed()) await mainWindow.loadURL(pageUrl());
   } catch (e) {
     sendStatus({
       error: true,
       idle: true,
-      message: "La base Tacite est injoignable. Le serveur commun doit être allumé.",
+      message: e.message || "Tacite est injoignable. Vérifiez la connexion, puis réessayez.",
     });
   } finally {
     starting = false;
@@ -286,23 +186,9 @@ function buildMenu() {
             { role: "about", label: "À propos de Tacite" },
             { type: "separator" },
             {
-              label: "Preferences",
-              submenu: [
-                {
-                  label: "Paramètres de Tacite…",
-                  accelerator: "CmdOrCtrl+,",
-                  click: () => {
-                    if (mainWindow && !mainWindow.isDestroyed()) {
-                      mainWindow.loadURL(`${pageUrl()}settings`);
-                    }
-                  },
-                },
-                { type: "separator" },
-                {
-                  label: "Connecter à Cursor (MCP)…",
-                  click: () => connectToCursor({ showDialog: true }),
-                },
-              ],
+              label: "Réglages…",
+              accelerator: "CmdOrCtrl+,",
+              click: () => sendMenu("settings"),
             },
             {
               label: "Connecter à Cursor (MCP)…",
@@ -325,6 +211,27 @@ function buildMenu() {
           ],
         }]
       : []),
+    {
+      label: "Fichier",
+      submenu: [
+        {
+          label: "Importer des documents…",
+          accelerator: "CmdOrCtrl+O",
+          click: () => sendMenu("import-documents"),
+        },
+        {
+          label: "Importer des médias (CSV)…",
+          accelerator: "CmdOrCtrl+Shift+O",
+          click: () => sendMenu("import-outlets"),
+        },
+        { type: "separator" },
+        {
+          label: "Actualiser",
+          accelerator: "CmdOrCtrl+R",
+          click: () => sendMenu("refresh"),
+        },
+      ],
+    },
     {
       label: "Édition",
       submenu: [
@@ -370,7 +277,49 @@ ipcMain.handle("retry", async () => {
   await showSplash();
   boot();
 });
-ipcMain.handle("connect-cursor", (_e, opts) => connectToCursor(opts));
+ipcMain.handle("connect-cursor", (_e, opts) => connectToCursor(opts || {}));
+ipcMain.handle("app-info", () => ({
+  isDesktop: true,
+  platform: process.platform,
+  version: app.getVersion(),
+  origin: webOrigin,
+}));
+ipcMain.handle("open-files", async (_e, opts) => {
+  const filters = Array.isArray(opts?.filters) && opts.filters.length
+    ? opts.filters
+    : [{ name: "Documents", extensions: ["pdf", "html", "htm", "txt", "csv", "md", "docx", "json"] }];
+  const properties = opts?.multiple === false ? ["openFile"] : ["openFile", "multiSelections"];
+  const result = await dialog.showOpenDialog(mainWindow ?? undefined, { properties, filters });
+  if (result.canceled) return [];
+  const out = [];
+  for (const filePath of result.filePaths) {
+    const buf = readFileSync(filePath);
+    if (buf.length > MAX_FILE) continue;
+    const ext = extname(filePath).toLowerCase();
+    out.push({
+      name: basename(filePath),
+      path: filePath,
+      type: MIME[ext] || "application/octet-stream",
+      base64: buf.toString("base64"),
+    });
+  }
+  return out;
+});
+ipcMain.handle("notify", (_e, payload) => {
+  if (!Notification.isSupported()) return { ok: false };
+  const note = new Notification({
+    title: payload?.title || "Tacite",
+    body: payload?.body || "",
+  });
+  note.show();
+  return { ok: true };
+});
+ipcMain.handle("set-badge", (_e, count) => {
+  if (process.platform === "darwin" && app.dock) {
+    app.dock.setBadge(count == null || count === "" ? "" : String(count));
+  }
+  return { ok: true };
+});
 
 app.setName("Tacite");
 app.setAboutPanelOptions({
@@ -393,6 +342,7 @@ if (!gotLock) {
     if (process.platform === "darwin" && app.dock) {
       app.dock.setIcon(appIconPng());
     }
+    loadServerOrigin();
     buildMenu();
     createWindow();
     await showSplash();

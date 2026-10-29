@@ -9,6 +9,8 @@ import { TaciteMark } from "./components/TaciteMark";
 import { ThemeToggle } from "./ThemeProvider";
 import { LanguageToggle, useI18n } from "./i18n/I18nProvider";
 import { logout, me, setToken } from "./api";
+import DesktopShell from "./DesktopShell";
+import { isDesktop } from "./desktop";
 
 const NAV = [
   { to: "/", labelKey: "nav.dashboard", kindKey: "nav.kDashboard", icon: LayoutDashboard },
@@ -54,6 +56,7 @@ export default function Layout() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-paper">
+      <DesktopShell />
       {/* Colonne de navigation */}
       <aside className="flex w-[216px] shrink-0 flex-col border-r border-hair bg-paper">
         {/* Masthead : filet bronze + cartouche outil (cover__masthead du kit) */}
@@ -117,6 +120,7 @@ export default function Layout() {
             Tacite
           </span>
           <div className="flex items-center gap-3">
+            {isDesktop() && <span className="uppercase tracking-[0.16em] text-accent">Bureau</span>}
             <span className="uppercase tracking-[0.16em] text-faint">{current ? t(current.kindKey) : t("brand.report")}</span>
             <LanguageToggle />
             <ThemeToggle />

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getDashboard } from "../api";
+import { readView, writeView } from "../viewCache";
 import { Card, Stat, Badge, ActionBadge, Empty, Loading, ErrorState, PageHeader, Term, Meter, Callout, Button, ScorePill, Select } from "../components";
 import TopicsMap from "../components/maps/TopicsMap";
 import { flag, countryName } from "../geo";
@@ -59,8 +60,10 @@ export default function DashboardPage() {
     setMapStory(null);
     setMapTheme(null);
     let cancelled = false;
+    const cacheKey = `dashboard:${country || "all"}`;
+    readView<any>(cacheKey).then((cached) => { if (!cancelled && cached) setData(cached); });
     const load = () => getDashboard(country || undefined)
-      .then((d) => { if (!cancelled) { setData(d); setError(null); } })
+      .then((d) => { if (!cancelled) { setData(d); setError(null); writeView(cacheKey, d); } })
       .catch((e) => { if (!cancelled) setError(String(e)); });
     load();
     const id = setInterval(load, 5 * 60 * 1000);

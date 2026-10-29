@@ -9,6 +9,8 @@ import {
 } from "../components";
 import { flag, countryName, loadIsoCountries, languageName, maxUsableGapInfo, axisLabel } from "../geo";
 import { useI18n } from "../i18n/I18nProvider";
+import { isDesktop, pickNativeFiles, takePendingOutletCsv } from "../desktop";
+import { readView, writeView } from "../viewCache";
 import { confidenceLabel, confidenceTone, orientationLabel } from "../i18n/mapped";
 
 const emptyOutlet = {
@@ -31,8 +33,11 @@ export default function OutletsPage() {
   const navigate = useNavigate();
   const [countries, setCountries] = useState<{ code: string; name: string }[]>([]);
 
-  const load = () => listOutlets().then(setOutlets).finally(() => setLoading(false));
-  useEffect(() => { load(); }, []);
+  const load = () => listOutlets().then((rows) => { setOutlets(rows); writeView("outlets", rows); }).finally(() => setLoading(false));
+  useEffect(() => {
+    readView<any[]>("outlets").then((cached) => { if (cached?.length) { setOutlets(cached); setLoading(false); } });
+    load();
+  }, []);
   useEffect(() => { loadIsoCountries().then(setCountries); }, [locale]);
 
   const confLabel = (c?: string) => confidenceLabel(c, t) || c || "";
@@ -64,6 +69,15 @@ export default function OutletsPage() {
       setImportMsg(t("outlets.err", { msg: e.message }));
     }
   };
+  useEffect(() => {
+    const onNative = () => {
+      const file = takePendingOutletCsv();
+      if (file) handleImport(file);
+    };
+    window.addEventListener("tacite-import-outlets", onNative);
+    onNative();
+    return () => window.removeEventListener("tacite-import-outlets", onNative);
+  }, []);
 
   const present = [...new Set(outlets.map((o) => o.country))].sort((a, b) => countryName(a).localeCompare(countryName(b), locale));
   const rows = (countryFilter ? outlets.filter((o) => o.country === countryFilter) : outlets)
@@ -85,7 +99,14 @@ export default function OutletsPage() {
               {present.map((c) => <option key={c} value={c}>{flag(c)} {countryName(c)}</option>)}
             </Select>
             <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => e.target.files?.[0] && handleImport(e.target.files[0])} />
-            <Button onClick={() => fileRef.current?.click()}><Upload size={13} /> {t("outlets.importCsv")}</Button>
+            <Button onClick={async () => {
+              if (isDesktop()) {
+                const files = await pickNativeFiles("outlets");
+                if (files[0]) handleImport(files[0]);
+                return;
+              }
+              fileRef.current?.click();
+            }}><Upload size={13} /> {t("outlets.importCsv")}</Button>
             <Button onClick={() => setShowCountry(true)}><Globe2 size={13} /> {t("outlets.manageCountry")}</Button>
             <Button variant="primary" onClick={openCreate}><Plus size={13} /> {t("outlets.add")}</Button>
           </>

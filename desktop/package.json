@@ -1,7 +1,7 @@
 {
   "name": "tacite-desktop",
   "productName": "Tacite",
-  "version": "0.4.0",
+    "version": "0.5.0",
   "description": "Tacite — Intelligence presse",
   "private": true,
   "type": "module",
@@ -30,18 +30,7 @@
       "build/icon.png"
     ],
     "extraResources": [
-      { "from": "build/icon.png", "to": "icon.png" },
-      { "from": "stack/docker-compose.yml", "to": "stack/docker-compose.yml" },
-      {
-        "from": "../backend",
-        "to": "stack/backend",
-        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc", "!**/.pytest_cache/**", "!**/.venv/**"]
-      },
-      {
-        "from": "../frontend",
-        "to": "stack/frontend",
-        "filter": ["**/*", "!**/node_modules/**", "!**/dist/**"]
-      }
+      { "from": "build/icon.png", "to": "icon.png" }
     ],
     "directories": {
       "buildResources": "build",

@@ -3,6 +3,7 @@ import { getSettings, updateSettings, triggerIngestAll, triggerAnalysis, trigger
 import { Card, Stat, Button, Field, Input, Select, Loading, PageHeader, Callout, Meter, Segmented } from "../components";
 import { useTheme } from "../ThemeProvider";
 import { useI18n } from "../i18n/I18nProvider";
+import { isDesktop } from "../desktop";
 import type { ThemePref } from "../theme";
 import type { Locale } from "../i18n/locale";
 
@@ -59,6 +60,8 @@ export default function SettingsPage() {
   return (
     <div>
       <PageHeader kicker={t("settings.kicker")} title={t("settings.title")} actions={<Button variant="primary" onClick={handleSave} disabled={saving}>{saving ? t("common.saving") : t("common.save")}</Button>} />
+
+      {isDesktop() && <div className="mb-5"><Callout label="Bureau">Cette fenêtre est l’app Mac. Les fonctions d’analyse sont les mêmes que sur le web ; les menus Fichier importent depuis le disque.</Callout></div>}
 
       {msg && <div className="mb-5"><Callout label={msg.warn ? t("common.alert") : t("common.state")} warn={msg.warn}>{msg.text}</Callout></div>}
 
