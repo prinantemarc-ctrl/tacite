@@ -20,6 +20,8 @@ export type DesktopBridge = {
   setBadge?: (count: number | string | null) => Promise<{ ok: boolean }>;
 };
 
+export const MAC_APP_URL = "https://github.com/prinantemarc-ctrl/tacite/releases/latest/download/Tacite-mac.dmg";
+
 const DOC_FILTERS = [{ name: "Documents", extensions: ["pdf", "html", "htm", "txt", "md", "csv", "docx", "xlsx", "json"] }];
 const CSV_FILTERS = [{ name: "CSV", extensions: ["csv"] }];
 

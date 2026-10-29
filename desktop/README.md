@@ -32,3 +32,11 @@ npm start
 ```
 
 L’app ne démarre plus Docker. Le serveur doit déjà répondre.
+
+## Téléchargement
+
+Le DMG universel (Apple Silicon et Intel) est publié ici :
+
+https://github.com/prinantemarc-ctrl/tacite/releases/latest/download/Tacite-mac.dmg
+
+Le site affiche le même lien sur la page de connexion. Il n’y a pas de certificat Apple : au premier lancement, clic droit puis Ouvrir. Si macOS parle d’une app endommagée, `xattr -cr /Applications/Tacite.app`.

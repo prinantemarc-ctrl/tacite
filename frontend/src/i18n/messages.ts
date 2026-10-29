@@ -31,6 +31,8 @@ const frCore: Messages = {
     switchToSignIn: "J'ai déjà un compte",
     working: "Vérification…",
     logout: "Fermer la session",
+    downloadMac: "Télécharger pour Mac",
+    downloadMacHint: "Apple Silicon et Intel. Au premier lancement : clic droit, puis Ouvrir.",
   },
   nav: {
     dashboard: "Tableau de bord", assistant: "Assistant", outlets: "Médias", journalists: "Journalistes",
@@ -323,6 +325,8 @@ const enCore: Messages = {
     switchToSignIn: "I already have an account",
     working: "Checking…",
     logout: "Sign out",
+    downloadMac: "Download for Mac",
+    downloadMacHint: "Apple Silicon and Intel. On first launch: right-click, then Open.",
   },
   nav: {
     dashboard: "Dashboard", assistant: "Assistant", outlets: "Outlets", journalists: "Journalists",

@@ -4,6 +4,7 @@ import { Button, Field, Input } from "../components";
 import { TaciteMark } from "../components/TaciteMark";
 import { useI18n } from "../i18n/I18nProvider";
 import { getToken, login, register, setToken } from "../api";
+import { isDesktop, MAC_APP_URL } from "../desktop";
 
 function detailOf(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err);
@@ -77,6 +78,12 @@ export default function LoginPage() {
             {busy ? t("auth.working") : mode === "login" ? t("auth.signIn") : t("auth.create")}
           </Button>
         </div>
+        {!isDesktop() && (
+          <p className="mt-8 text-[12px] leading-relaxed text-faint">
+            <a className="text-muted underline decoration-hair underline-offset-2 hover:text-ink" href={MAC_APP_URL}>{t("auth.downloadMac")}</a>
+            <span className="mt-1 block">{t("auth.downloadMacHint")}</span>
+          </p>
+        )}
       </form>
     </div>
   );

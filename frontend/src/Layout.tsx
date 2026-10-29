@@ -10,7 +10,7 @@ import { ThemeToggle } from "./ThemeProvider";
 import { LanguageToggle, useI18n } from "./i18n/I18nProvider";
 import { logout, me, setToken } from "./api";
 import DesktopShell from "./DesktopShell";
-import { isDesktop } from "./desktop";
+import { isDesktop, MAC_APP_URL } from "./desktop";
 
 const NAV = [
   { to: "/", labelKey: "nav.dashboard", kindKey: "nav.kDashboard", icon: LayoutDashboard },
@@ -98,7 +98,11 @@ export default function Layout() {
           </ol>
         </nav>
 
-        <div className="flex items-center justify-between gap-2 border-t border-hair px-4 py-3">
+        <div className="border-t border-hair px-4 py-3">
+          {!isDesktop() && (
+            <a href={MAC_APP_URL} className="mb-2 block text-[11px] text-muted underline decoration-hair underline-offset-2 hover:text-ink">{t("auth.downloadMac")}</a>
+          )}
+          <div className="flex items-center justify-between gap-2">
           <span className="min-w-0 truncate text-[11px] text-muted" title={account}>{account}</span>
           <button
             type="button"
@@ -108,6 +112,7 @@ export default function Layout() {
           >
             <LogOut size={14} />
           </button>
+          </div>
         </div>
       </aside>
 

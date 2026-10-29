@@ -1,0 +1,11 @@
+Tacite pour Mac
+Apple Silicon et Intel. L’app se connecte à https://tacite-zs2b.onrender.com
+(même compte que dans le navigateur).
+
+1. Glissez Tacite dans Applications.
+2. Premier lancement : clic droit sur Tacite, puis Ouvrir.
+3. Si macOS dit que l’app est endommagée, dans Terminal :
+
+   xattr -cr /Applications/Tacite.app
+
+   Puis rouvrez Tacite.
