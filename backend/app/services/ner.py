@@ -64,18 +64,40 @@ LABEL_MAP = {
 }
 
 
-def extract_entities(text: str, language: str = "fr") -> dict:
-    nlp = _get_nlp(language)
+def _entities_of(doc) -> dict:
     out: dict[str, list[str]] = {"people": [], "organizations": [], "locations": []}
-    if nlp is None or not text:
+    if doc is None:
         return out
-    doc = nlp(text[:20000])
     for ent in doc.ents:
         bucket = LABEL_MAP.get(ent.label_)
         if bucket and ent.text.strip():
             out[bucket].append(ent.text.strip())
     for k in out:
         out[k] = sorted(set(out[k]))
+    return out
+
+
+def extract_entities(text: str, language: str = "fr") -> dict:
+    nlp = _get_nlp(language)
+    if nlp is None or not text:
+        return {"people": [], "organizations": [], "locations": []}
+    return _entities_of(nlp(text[:20000]))
+
+
+def extract_entities_many(items: list[tuple[str, str]]) -> list[dict]:
+    """Même résultat que `extract_entities`, un passage par langue."""
+    empty = {"people": [], "organizations": [], "locations": []}
+    out = [dict(empty) for _ in items]
+    by_lang: dict[str, list[int]] = {}
+    for i, (_text, language) in enumerate(items):
+        by_lang.setdefault((language or "fr")[:2].lower(), []).append(i)
+    for lang, indexes in by_lang.items():
+        nlp = _get_nlp(lang)
+        if nlp is None:
+            continue
+        docs = nlp.pipe((items[i][0][:20000] or " " for i in indexes), batch_size=64)
+        for i, doc in zip(indexes, docs):
+            out[i] = _entities_of(doc)
     return out
 
 

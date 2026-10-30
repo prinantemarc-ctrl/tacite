@@ -48,13 +48,13 @@ def _analysis_loop() -> None:
         did = False
         db = SessionLocal()
         try:
-            batch = max(100, int(get_setting(db, "analysis_batch_size") or 100))
+            batch = max(200, int(get_setting(db, "analysis_batch_size") or 200))
             done = analysis.process_pending(db, batch)
             if done:
                 did = True
                 log.info("Analyzed %d articles", done)
                 analyzed_since_profile += done
-                if analyzed_since_profile >= 50:
+                if analyzed_since_profile >= 500:
                     try:
                         profiles.run_outlet_profiles(db)
                         log.info("Updated outlet profiles after %d analyzed articles", analyzed_since_profile)

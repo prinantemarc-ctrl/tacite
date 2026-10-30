@@ -19,8 +19,8 @@ BOILERPLATE_DATA = {"entities": {}, "topics": [{"label": "Boilerplate", "framing
 LLM_CALL_INTERVAL = 0.0
 _last_llm_call = 0.0
 _llm_lock = threading.Lock()
-# Appels LLM simultanés. Pas de plafond de coût : le débit suit la latence du modèle.
-EXTRACTION_CONCURRENCY = 8
+# Appels LLM simultanés. L'attente est réseau : on en garde beaucoup en vol.
+EXTRACTION_CONCURRENCY = 32
 
 DEDUP_SIMILARITY_THRESHOLD = 0.95
 
@@ -249,119 +249,139 @@ def _process_sequential(db: Session, pending: list[Article]) -> int:
     return done
 
 
-def _process_parallel(db: Session, pending: list[Article], workers: int) -> int:
-    """Phase 1 en parallèle : pré-traitement local + appel LLM (I/O bound).
-
-    Chaque worker a sa session ; la session de la boucle n'est touchée que par le
-    thread courant. Les embeddings tournent dans les threads (GIL relâché par
-    torch), le NER est refait dans le thread principal après commit.
-    """
+def _call_llm(article_id: int) -> dict | None:
+    """Un appel modèle, session à part. L'embedding et le filtre local sont déjà faits."""
     from ..database import SessionLocal
 
-    def prepare(article_id: int) -> dict | None:
-        """Pré-traitement + extraction LLM. Retourne le contexte ou None si traité sans LLM."""
-        s = SessionLocal()
+    s = SessionLocal()
+    try:
+        a = s.get(Article, article_id)
+        if a is None or a.analysis_status != "pending":
+            return None
+        text = a.text or ""
+        title = a.title or ""
+        min_len = int(get_setting(s, "min_text_length_for_llm") or 400)
+        stored = _stored_coverage(a, min_len)
+        max_daily = float(get_setting(s, "max_daily_cost_usd") or 0)
+        if max_daily > 0 and daily_cost(s) >= max_daily:
+            return {"needs_llm": False, "text": text, "language": a.language or "fr", "coverage": stored}
+        model = get_setting(s, "llm_model")
+        outlet = s.get(Outlet, a.outlet_id)
+        country = outlet.country if outlet else None
+        s.commit()
+        extracted = llm.extract_article(s, model, title, text, country, coverage=_prompt_mode(stored, text, min_len))
+        return {"needs_llm": True, "extracted": extracted, "text": text, "language": a.language or "fr", "coverage": stored}
+    except Exception as e:  # noqa: BLE001
+        log.warning("analysis prepare failed for article %s: %s", article_id, e)
+        s.rollback()
         try:
             a = s.get(Article, article_id)
-            if a is None or a.analysis_status != "pending":
-                return None
-            text = a.text or ""
-            title = a.title or ""
-            language = a.language or "fr"
-            if extract.is_boilerplate(text, title):
-                a.extracted_data = BOILERPLATE_DATA
-                a.analysis_status = "embedded_only"
+            if a is not None:
+                a.analysis_status = "error"
                 s.commit()
-                return None
-            if a.embedding is None:
-                a.embedding = embeddings.embed_text(f"{title}\n{text[:2000]}")
-            if _is_likely_non_political(title, text, language):
-                a.extracted_data = {
-                    "entities": {},
-                    "topics": [{"label": "Non-political", "framing": {} }],
-                    "framing": {},
-                    "tone": "neutral",
-                    "angle": "brief",
-                }
-                a.analysis_status = "embedded_only"
-                s.commit()
-                return None
-            original = _check_duplicate(s, a)
-            if original:
-                a.analysis_status = "duplicate"
-                a.duplicate_of_id = original.id
-                s.commit()
-                return None
-            min_len = int(get_setting(s, "min_text_length_for_llm") or 400)
-            stored = _stored_coverage(a, min_len)
-            if len(text) < extract.EXCERPT_MIN:
-                return {"needs_llm": False, "text": text, "language": language, "coverage": stored}
-            model = get_setting(s, "llm_model")
-            outlet = s.get(Outlet, a.outlet_id)
-            country = outlet.country if outlet else None
-            max_daily = float(get_setting(s, "max_daily_cost_usd") or 0)
-            if max_daily > 0:
-                with _llm_lock:
-                    if daily_cost(s) >= max_daily:
-                        log.info("Daily LLM cost cap reached (%.2f / %.2f), skipping LLM for article %s",
-                                 daily_cost(s), max_daily, article_id)
-                        return {"needs_llm": False, "text": text, "language": language, "coverage": stored}
-            s.commit()
-            global _last_llm_call
-            with _llm_lock:
-                elapsed = time.time() - _last_llm_call
-                if elapsed < LLM_CALL_INTERVAL:
-                    time.sleep(LLM_CALL_INTERVAL - elapsed)
-                _last_llm_call = time.time()
-            mode = _prompt_mode(stored, text, min_len)
-            extracted = llm.extract_article(s, model, title, text, country, coverage=mode)
-            return {"needs_llm": True, "extracted": extracted, "text": text, "language": language, "coverage": stored}
-        except Exception as e:  # noqa: BLE001
-            log.warning("analysis prepare failed for article %s: %s", article_id, e)
+        except Exception:  # noqa: BLE001
             s.rollback()
-            try:
-                a = s.get(Article, article_id)
-                if a is not None:
-                    a.analysis_status = "error"
-                    s.commit()
-            except Exception:  # noqa: BLE001
-                s.rollback()
-            return None
-        finally:
-            s.close()
+        return None
+    finally:
+        s.close()
 
-    ids = [a.id for a in pending]
-    db.commit()  # referme la transaction de lecture avant le travail parallèle des threads
+
+def _process_parallel(db: Session, pending: list[Article], workers: int) -> int:
+    """Embeddings en un seul passage, puis les appels LLM en parallèle.
+
+    Le calcul local un par un occupait le processeur et laissait le modèle attendre.
+    """
     done = 0
-    from contextvars import copy_context
-    with ThreadPoolExecutor(max_workers=workers) as pool:
-        futures = {pool.submit(copy_context().run, prepare, aid): aid for aid in ids}
-        for fut in as_completed(futures):
-            article_id = futures[fut]
+    candidates: list[Article] = []
+    for a in pending:
+        text = a.text or ""
+        title = a.title or ""
+        language = a.language or "fr"
+        if extract.is_boilerplate(text, title):
+            a.extracted_data = BOILERPLATE_DATA
+            a.analysis_status = "embedded_only"
+            done += 1
+            continue
+        if _is_likely_non_political(title, text, language):
+            a.extracted_data = {
+                "entities": {},
+                "topics": [{"label": "Non-political", "framing": {}}],
+                "framing": {},
+                "tone": "neutral",
+                "angle": "brief",
+            }
+            a.analysis_status = "embedded_only"
+            done += 1
+            continue
+        candidates.append(a)
+    db.commit()
+
+    missing = [a for a in candidates if a.embedding is None]
+    if missing:
+        vectors = embeddings.embed_texts([f"{a.title or ''}\n{(a.text or '')[:2000]}" for a in missing])
+        for article, vector in zip(missing, vectors):
+            article.embedding = vector
+        db.commit()
+
+    llm_ids: list[int] = []
+    local_ids: list[int] = []
+    for a in candidates:
+        text = a.text or ""
+        if len(text) < extract.EXCERPT_MIN:
+            local_ids.append(a.id)
+            continue
+        original = _check_duplicate(db, a)
+        if original:
+            a.analysis_status = "duplicate"
+            a.duplicate_of_id = original.id
+            done += 1
+            continue
+        llm_ids.append(a.id)
+    db.commit()
+
+    contexts: dict[int, dict] = {}
+    if llm_ids:
+        from contextvars import copy_context
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {pool.submit(copy_context().run, _call_llm, aid): aid for aid in llm_ids}
+            for fut in as_completed(futures):
+                article_id = futures[fut]
+                try:
+                    ctx = fut.result()
+                except Exception as e:  # noqa: BLE001
+                    log.warning("analysis future failed for article %s: %s", article_id, e)
+                    continue
+                if ctx is not None:
+                    contexts[article_id] = ctx
+
+    min_len = int(get_setting(db, "min_text_length_for_llm") or 400)
+    rows = []
+    for aid in local_ids:
+        a = db.get(Article, aid)
+        if a is None:
+            continue
+        rows.append((a, {"needs_llm": False, "text": a.text or "", "language": a.language or "fr", "coverage": _stored_coverage(a, min_len)}))
+    for aid, ctx in contexts.items():
+        a = db.get(Article, aid)
+        if a is not None:
+            rows.append((a, ctx))
+    if rows:
+        entities = ner.extract_entities_many([(ctx["text"], ctx["language"]) for _a, ctx in rows])
+        for (a, ctx), ner_entities in zip(rows, entities):
             try:
-                ctx = fut.result()
-            except Exception as e:  # noqa: BLE001
-                log.warning("analysis future failed for article %s: %s", article_id, e)
-                continue
-            if ctx is None:
-                continue  # déjà traité et commité dans le thread (boilerplate / dup / erreur)
-            a = db.get(Article, article_id)
-            if a is None:
-                continue
-            try:
-                ner_entities = ner.extract_entities(ctx["text"], ctx["language"])
                 coverage = ctx.get("coverage") or "body"
-                if ctx["needs_llm"] and ctx.get("extracted"):
+                if ctx.get("needs_llm") and ctx.get("extracted"):
                     a.extracted_data = _finish(ctx["extracted"], ner_entities, coverage)
                     a.analysis_status = "analyzed"
                 else:
                     a.extracted_data = _finish(None, ner_entities, coverage)
                     a.analysis_status = "embedded_only"
                 db.commit()
+                done += 1
             except Exception as e:  # noqa: BLE001
-                log.warning("analysis finalize failed for article %s: %s", article_id, e)
+                log.warning("analysis finalize failed for article %s: %s", a.id, e)
                 db.rollback()
                 a.analysis_status = "error"
                 db.commit()
-            done += 1
+                done += 1
     return done
