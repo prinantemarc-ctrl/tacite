@@ -24,6 +24,7 @@ export default function OutletsPage() {
   const [outlets, setOutlets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [countryFilter, setCountryFilter] = useState("");
+  const [nameFilter, setNameFilter] = useState("");
   const [showModal, setShowModal] = useState(false);
   const [showCountry, setShowCountry] = useState(false);
   const [editItem, setEditItem] = useState<any>(null);
@@ -80,7 +81,9 @@ export default function OutletsPage() {
   }, []);
 
   const present = [...new Set(outlets.map((o) => o.country))].sort((a, b) => countryName(a).localeCompare(countryName(b), locale));
+  const needle = nameFilter.trim().toLocaleLowerCase(locale);
   const rows = (countryFilter ? outlets.filter((o) => o.country === countryFilter) : outlets)
+    .filter((o) => !needle || o.name.toLocaleLowerCase(locale).includes(needle) || countryName(o.country).toLocaleLowerCase(locale).includes(needle))
     .slice()
     .sort((a, b) => (b.influence_score || 0) - (a.influence_score || 0) || (b.articles_total || 0) - (a.articles_total || 0));
 
@@ -94,6 +97,7 @@ export default function OutletsPage() {
         subtitle={t("outlets.subtitle", { n: outlets.length, p: present.length })}
         actions={
           <>
+            <Input value={nameFilter} onChange={(e) => setNameFilter(e.target.value)} placeholder={t("outlets.filterName")} className="w-48" />
             <Select value={countryFilter} onChange={(e) => setCountryFilter(e.target.value)}>
               <option value="">{t("common.allCountries")}</option>
               {present.map((c) => <option key={c} value={c}>{flag(c)} {countryName(c)}</option>)}
@@ -117,12 +121,10 @@ export default function OutletsPage() {
 
       <Card>
         {rows.length === 0 ? <Empty>{t("outlets.emptyFilter")}</Empty> : (
-          <Table headers={[t("outlets.colOutlet"), t("outlets.volume"), <Term k="influence">{t("outlets.influence")}</Term>, <Term k="gap">{t("outlets.colGap")}</Term>, <Term k="drift">{t("outlets.colDrift")}</Term>, <Term k="outlet_topics">{t("outlets.colTopics")}</Term>, <Term k="top_journalists">{t("pages.journalists")}</Term>, ""]}>
+          <Table headers={[t("outlets.colOutlet"), t("outlets.volume"), <Term k="influence">{t("outlets.influence")}</Term>, <Term k="gap">{t("outlets.colGap")}</Term>, <Term k="drift">{t("outlets.colDrift")}</Term>, ""]}>
             {rows.map((o) => {
               const gap = maxUsableGapInfo(o);
               const drifts = (o.latest_profile?.drift_alerts || []) as { axis: string; change: number }[];
-              const topics = (o.topics || []) as { label: string; count: number }[];
-              const journalists = (o.top_journalists || []) as { id: number; name: string; articles: number }[];
               const conf = o.confidence as string | undefined;
               const confTone = confidenceTone(conf);
               return (
@@ -160,27 +162,6 @@ export default function OutletsPage() {
                           </Badge>
                         ))}
                       </div>
-                    ) : <span className="text-faint">{t("common.dash")}</span>}
-                  </td>
-                  <td className="min-w-[140px] max-w-[200px]">
-                    {topics.length ? topics.slice(0, 3).map((topic) => (
-                      <div key={topic.label} className="truncate text-[12px] text-ink" title={`${topic.label} ×${topic.count}`}>
-                        {topic.label} <span className="num text-faint">×{topic.count}</span>
-                      </div>
-                    )) : <span className="text-faint">{t("common.dash")}</span>}
-                  </td>
-                  <td className="min-w-[140px] max-w-[220px]">
-                    {journalists.length ? (
-                      <>
-                        {journalists.map((j) => (
-                          <button key={j.id} onClick={() => navigate(`/journalists/${j.id}`)} className="block max-w-full truncate text-left text-[12px] text-ink hover:text-accent-strong">
-                            {j.name} <span className="num text-faint">×{j.articles}</span>
-                          </button>
-                        ))}
-                        {(o.journalists_count || 0) > journalists.length && (
-                          <div className="text-[11px] text-faint">+{o.journalists_count - journalists.length}</div>
-                        )}
-                      </>
                     ) : <span className="text-faint">{t("common.dash")}</span>}
                   </td>
                   <td className="whitespace-nowrap text-right">

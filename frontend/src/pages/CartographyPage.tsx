@@ -104,17 +104,25 @@ function insights(data: any, countryFilter: string, t: TFn): string[] {
   return out;
 }
 
-function useLazy<T>(loader: () => Promise<T>, active: boolean, deps: any[] = []) {
+function useLazy<T>(loader: () => Promise<T>, active: boolean, deps: any[] = [], pollEmpty = false) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
+    let timer: number | undefined;
     setLoading(true); setError(null);
-    loader().then((d) => !cancelled && setData(d)).catch((e) => !cancelled && setError(e.message)).finally(() => !cancelled && setLoading(false));
-    return () => { cancelled = true; };
-  }, [active, ...deps]);
+    loader().then((d) => {
+      if (cancelled) return;
+      setData(d);
+      const pending = !!d && typeof d === "object" && !Array.isArray(d) && Boolean((d as { preparing?: boolean }).preparing);
+      const emptyList = pollEmpty && Array.isArray(d) && d.length === 0 && tick < 20;
+      if (pending || emptyList) timer = window.setTimeout(() => { if (!cancelled) setTick((n) => n + 1); }, 8000);
+    }).catch((e) => { if (!cancelled) setError(e.message); }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [active, tick, ...deps]);
   return { data, loading, error };
 }
 
@@ -166,7 +174,7 @@ export default function CartographyPage() {
 
   // Analyses
   const leadlag = useLazy(() => getMapLeadLag(30), view === "analyses");
-  const dissidents = useLazy(getMapDissidents, view === "analyses");
+  const dissidents = useLazy(getMapDissidents, view === "analyses", [], true);
   const entities = useLazy(() => getMapEntities(30), view === "analyses");
 
   // Annuaire
@@ -174,10 +182,10 @@ export default function CartographyPage() {
   const [journalists, setJournalists] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [countryFilter, setCountryFilter] = useState("");
-  useEffect(() => { listOutlets().then(setOutlets).catch(() => undefined); }, []);
+  useEffect(() => { listOutlets("brief").then(setOutlets).catch(() => undefined); }, []);
   useEffect(() => {
     if (view !== "directory") return;
-    Promise.all([listOutlets(), listJournalists()]).then(([o, j]) => { setOutlets(o); setJournalists(j); });
+    Promise.all([listOutlets("brief"), listJournalists()]).then(([o, j]) => { setOutlets(o); setJournalists(j); });
   }, [view]);
   const outletMap = useMemo(() => Object.fromEntries(outlets.map((o) => [o.id, o])), [outlets]);
   const countries: string[] = useMemo(() => {
@@ -202,6 +210,11 @@ export default function CartographyPage() {
 
   const weekOptions = [4, 8, 12, 26];
   const unclass = t("carto.unclassified");
+  const preparing =
+    ((view === "positions" || view === "landscape") && !!landscape.data?.preparing)
+    || (view === "network" && !!network.data?.preparing)
+    || (view === "world" && !!world.data?.preparing)
+    || (view === "analyses" && !!(corpus.data?.preparing || packs.data?.preparing || leadlag.data?.preparing || entities.data?.preparing));
 
   return (
     <div>
@@ -211,6 +224,8 @@ export default function CartographyPage() {
         subtitle={<><Term k="measured">{t("carto.measuredLines")}</Term>{t("carto.sub1")}<Term k="influence">{t("carto.influenceWord")}</Term>{t("carto.sub2")}<Link to="/method" className="text-accent-strong hover:underline">{t("nav.method")}</Link>{t("carto.sub3")}</>}
         actions={<Segmented value={view} onChange={setView} options={VIEWS} />}
       />
+
+      {preparing && <div className="mb-4"><Empty>{t("carto.preparing")}</Empty></div>}
 
       {/* ───────────────────────── Positions par axe */}
       {view === "positions" && (

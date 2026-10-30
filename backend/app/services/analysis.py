@@ -16,12 +16,11 @@ log = logging.getLogger("tacite.analysis")
 
 BOILERPLATE_DATA = {"entities": {}, "topics": [{"label": "Boilerplate", "framing": {}}], "framing": {}, "tone": "neutral", "angle": "brief", "boilerplate": True}
 
-LLM_CALL_INTERVAL = 0.5  # Reduced from 1.0 to speed up pipeline
+LLM_CALL_INTERVAL = 0.0
 _last_llm_call = 0.0
 _llm_lock = threading.Lock()
-# Appels LLM simultanés pour l'analyse. Aleria tolère la concurrence ; la latence par
-# article (10-30 s de raisonnement) plafonne le débit à un appel à la fois.
-EXTRACTION_CONCURRENCY = 2
+# Appels LLM simultanés. Pas de plafond de coût : le débit suit la latence du modèle.
+EXTRACTION_CONCURRENCY = 8
 
 DEDUP_SIMILARITY_THRESHOLD = 0.95
 

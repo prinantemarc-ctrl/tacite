@@ -93,7 +93,10 @@ def test_google_article_id_is_stable():
     assert google_article_id("https://www.lemonde.fr/a") is None
 
 
-def test_generic_sitemap_skips_tags_images_and_old_urls():
+def test_generic_sitemap_skips_tags_and_images_and_keeps_archives():
     _, items = parse_sitemap(GENERIC)
     chosen = select_sitemap_articles(items, "https://example.com", datetime(2026, 10, 29))
-    assert [item["url"] for item in chosen] == ["https://www.example.com/monde/2026/10/29/entretien-long"]
+    assert [item["url"] for item in chosen] == [
+        "https://www.example.com/monde/2026/10/29/entretien-long",
+        "https://www.example.com/archives/2020/01/01/vieux-sujet",
+    ]

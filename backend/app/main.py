@@ -156,11 +156,32 @@ def dashboard_legacy(db: Session = Depends(get_db)):
 # ------------------------------------------------------------------- outlets
 
 @app.get("/api/outlets")
-def list_outlets(country: str | None = None, db: Session = Depends(get_db)):
+def list_outlets(country: str | None = None, view: str = Query("full"), db: Session = Depends(get_db)):
+    """`view=brief` : id, nom, pays — pour les listes déroulantes.
+    `view=full` : volume, influence, écart, dérive. Les sujets et les journalistes
+    restent sur la fiche : les recalculer ici relit huit semaines d'articles."""
     q = db.query(Outlet)
     if country:
         q = q.filter(Outlet.country == country.upper())
-    rows = q.order_by(Outlet.influence_score.desc()).all()
+    if view == "brief":
+        rows = (
+            q.with_entities(
+                Outlet.id, Outlet.name, Outlet.country, Outlet.language,
+                Outlet.influence_score, Outlet.collect_enabled,
+            )
+            .order_by(Outlet.name.asc())
+            .all()
+        )
+        return [
+            {
+                "id": i, "name": name, "country": c, "language": lang,
+                "influence_score": infl, "collect_enabled": enabled,
+            }
+            for i, name, c, lang, infl, enabled in rows
+        ]
+    rows = q.order_by(Outlet.influence_score.desc(), Outlet.name.asc()).all()
+    if not rows:
+        return []
     # Dernier profil hebdomadaire par média (écart officiel/réel, nb d'articles)
     latest_week = (
         db.query(OutletProfile.outlet_id, func.max(OutletProfile.week).label("week"))
@@ -174,7 +195,8 @@ def list_outlets(country: str | None = None, db: Session = Depends(get_db)):
     by_outlet = {p.outlet_id: p for p in profs}
     feed_counts = dict(db.query(OutletFeed.outlet_id, func.count()).filter(OutletFeed.enabled == 1).group_by(OutletFeed.outlet_id).all())
     article_counts = dict(db.query(Article.outlet_id, func.count()).group_by(Article.outlet_id).all())
-    recaps = profiles.recap_for_outlets(db, [o.id for o in rows])
+    from .kits import axes_for_countries
+    axes = axes_for_countries((o.country for o in rows), db)
     out = []
     for o in rows:
         d = row_to_dict(o)
@@ -184,11 +206,10 @@ def list_outlets(country: str | None = None, db: Session = Depends(get_db)):
         d["articles_total"] = int(article_counts.get(o.id, 0) or 0)
         d["articles_week"] = int(p.article_count or 0) if p else 0
         d["confidence"] = profiles.confidence_label(profiles.evidence_n(p.axis_n if p else None, p.article_count if p else 0))
-        d["max_gap"] = profiles.max_usable_gap(o.country, p.gap_from_official if p else None, p.axis_n if p else None, db)
-        r = recaps.get(o.id) or {}
-        d["topics"] = r.get("topics") or []
-        d["top_journalists"] = r.get("journalists") or []
-        d["journalists_count"] = int(r.get("journalists_count") or 0)
+        d["max_gap"] = profiles.max_usable_gap(
+            o.country, p.gap_from_official if p else None, p.axis_n if p else None,
+            usable=axes.get((o.country or "").upper()),
+        )
         out.append(d)
     return out
 

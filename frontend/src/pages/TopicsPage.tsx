@@ -41,6 +41,7 @@ export default function TopicsPage() {
   const [qDraft, setQDraft] = useState(params.get("q") || "");
   const [searchThemes, setSearchThemes] = useState<any[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [reload, setReload] = useState(0);
 
   const set = (k: string, v: string) => {
     const next = new URLSearchParams(params);
@@ -63,12 +64,13 @@ export default function TopicsPage() {
   }, [qParam]);
 
   useEffect(() => {
-    listOutlets().then(setOutlets);
+    listOutlets("brief").then(setOutlets);
     listJournalists().then(setJournalists);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
+    let timer: number | undefined;
     setLoading(true); setError(null);
     const filters = [
       `days=${days}`,
@@ -76,17 +78,15 @@ export default function TopicsPage() {
       outletId && `outlet_id=${outletId}`,
       journalistId && `journalist_id=${journalistId}`,
     ].filter(Boolean);
-    getMapTopics([...filters, "briefs=false"].join("&"))
+    getMapTopics(filters.join("&"))
       .then((d) => {
         if (cancelled) return;
         setData(d); setSelected(null); setThemeId(null); setLoading(false);
-        getMapTopics([...filters, "briefs=true"].join("&"))
-          .then((full) => { if (!cancelled) setData(full); })
-          .catch(() => { /* la carte est déjà à l'écran */ });
+        if (d?.preparing) timer = window.setTimeout(() => { if (!cancelled) setReload((n) => n + 1); }, 8000);
       })
       .catch((e) => { if (!cancelled) { setError(e.message); setLoading(false); } });
-    return () => { cancelled = true; };
-  }, [days, country, outletId, journalistId]);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [days, country, outletId, journalistId, reload]);
 
   useEffect(() => {
     const v = qDraft.trim();
@@ -113,7 +113,6 @@ export default function TopicsPage() {
       outletId && `outlet_id=${outletId}`,
       journalistId && `journalist_id=${journalistId}`,
       `q=${encodeURIComponent(qParam)}`,
-      "briefs=false",
     ].filter(Boolean).join("&");
     getMapTopics(qs)
       .then((d) => { if (!cancelled) setSearchThemes(d.search?.themes || []); })
@@ -222,7 +221,7 @@ export default function TopicsPage() {
           <option value="">{t("common.allJournalists")}</option>
           {journalistsForSelect.map((j) => <option key={j.id} value={j.id}>{j.name}{j.outlet_name ? ` · ${j.outlet_name}` : ""}</option>)}
         </Select>
-        {data && !loading && (
+        {data && !loading && !data.preparing && (
           <span className="ml-auto text-[11px] text-faint">
             {t("topics.inFamilies", { n: data.n_clustered, f: data.n_themes || clusters.length })}
             {clusters.length ? ` · ${t("topics.nStories", { n: clusters.length })}` : ""}
@@ -232,7 +231,9 @@ export default function TopicsPage() {
         )}
       </div>
 
-      {error ? <Empty>{error}</Empty> : loading && !data ? <Loading /> : !clusters.length ? (
+      {error ? <Empty>{error}</Empty> : loading && !data ? <Loading /> : data?.preparing ? (
+        <Empty>{t("topics.preparing")}</Empty>
+      ) : !clusters.length ? (
         <Empty>{t("topics.empty")}</Empty>
       ) : (
         <>

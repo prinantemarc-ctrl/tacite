@@ -407,11 +407,12 @@ def confidence_label(n: int) -> str:
     return "élevée" if n >= 30 else "moyenne" if n >= 10 else "faible"
 
 
-def max_usable_gap(country: str | None, gaps: dict | None, axis_n: dict | None, db=None) -> dict | None:
+def max_usable_gap(country: str | None, gaps: dict | None, axis_n: dict | None, db=None, *, usable: list[str] | None = None) -> dict | None:
     """Plus grand écart |mesuré − déclaré| parmi les axes assez renseignés. Valeur signée."""
     if not gaps:
         return None
-    usable = axes_for_country(country, db)
+    if usable is None:
+        usable = axes_for_country(country, db)
     has_n = bool(axis_n)
     scored: list[tuple[str, float]] = []
     for axis, val in gaps.items():

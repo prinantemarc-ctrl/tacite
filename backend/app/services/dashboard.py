@@ -2,8 +2,8 @@
 
 Regroupe en une réponse ce qui est utile à lire chaque matin : état de la collecte,
 mouvements du paysage, écarts, sujets, meneurs, dissidents, entités clivantes, clients.
-Tout est dérivé des données déjà en base ; les blocs coûteux passent par le cache
-de la cartographie.
+Tout est dérivé des données déjà en base. Agenda, meneurs, dissidents et entités
+sont lus dans les instantanés du worker : la requête ne les recalcule pas.
 """
 
 from __future__ import annotations
@@ -73,8 +73,14 @@ def build(db: Session, country: str | None = None) -> dict:
     all_outlets = {o.id: o for o in db.query(Outlet).all()}
     outlets = {i: o for i, o in all_outlets.items() if not country or (o.country or "").upper() == country}
 
-    # ── profils hebdo : dernier et avant-dernier par média
-    profs = db.query(OutletProfile).order_by(OutletProfile.outlet_id, OutletProfile.week.desc()).all()
+    # ── profils hebdo : dernier et avant-dernier par média (pas tout l'historique)
+    profs = (
+        db.query(OutletProfile)
+        .filter(OutletProfile.week >= today - timedelta(weeks=10))
+        .order_by(OutletProfile.outlet_id, OutletProfile.week.desc())
+        .all()
+    )
+    axes_by: dict[str, list[str]] = {}
     by_outlet: dict[int, list[OutletProfile]] = defaultdict(list)
     for p in profs:
         if len(by_outlet[p.outlet_id]) < 2:
@@ -95,7 +101,10 @@ def build(db: Session, country: str | None = None) -> dict:
             documented += 1
         g = latest.gap_from_official or {}
         axis_n = latest.axis_n or {}
-        usable = [a for a in axes_for_country(o.country, db) if (axis_n.get(a) or n) >= 10]
+        code = (o.country or "").upper()
+        if code not in axes_by:
+            axes_by[code] = axes_for_country(o.country, db)
+        usable = [a for a in axes_by[code] if (axis_n.get(a) or n) >= 10]
         if g and n >= 10 and usable:
             vals = {a: float(g.get(a, 0) or 0) for a in usable}
             mean_abs_gaps.append(float(np.mean([abs(v) for v in vals.values()])))
@@ -170,11 +179,14 @@ def build(db: Session, country: str | None = None) -> dict:
 
     agenda_today, agenda_week, topics_map, blind = {}, {}, {}, []
     by_country: list[dict] = []
+    topics = []
+    views_preparing = False
     try:
         from . import topics as topics_svc
-        agenda_today = topics_svc.agenda(db, days=1, country=country, cap=400)
-        agenda_week = topics_svc.agenda(db, days=7, country=country, cap=500)
+        agenda_today = topics_svc.agenda(db, days=1, country=country)
+        agenda_week = topics_svc.agenda(db, days=7, country=country)
         topics_map = agenda_week
+        views_preparing = bool(agenda_today.get("preparing") or agenda_week.get("preparing"))
         topics = _topic_rows(agenda_week)
         for c in agenda_week.get("clusters") or []:
             if c["outlets"] == 1 and c["articles"] >= 3 and c.get("outlets_detail"):
@@ -182,17 +194,15 @@ def build(db: Session, country: str | None = None) -> dict:
                 blind.append({"topic": c["label"], "articles": c["articles"], "outlet_id": o["id"], "outlet": o["name"]})
             if len(blind) >= 6:
                 break
-        # Un seul calcul d'agenda (déjà en cache). Relancer agenda() par pays
-        # recharge les embeddings de chaque corpus et bloque le tableau de bord.
         if not country:
             by_country = _topics_by_country(agenda_week)
     except Exception:
         log.exception("dashboard: topics")
         topics = []
 
-    # ── blocs mis en cache par la cartographie
     try:
         ll = cartography.leadlag(db, days=14, cap=1500)
+        views_preparing = views_preparing or bool(ll.get("preparing"))
         leaders = [r for r in ll["ranking"] if r["leads"] >= 2][:6]
         if country:
             leaders = [r for r in leaders if (all_outlets.get(r.get("outlet_id")) and all_outlets[r["outlet_id"]].country == country)]
@@ -200,7 +210,10 @@ def build(db: Session, country: str | None = None) -> dict:
     except Exception:
         leaders, leadlag_events = [], 0
     try:
-        all_diss = cartography.dissidents(db, cap=2000)
+        from . import prepared
+        all_diss = cartography.dissidents(db)
+        if not prepared.exists(db, prepared.dissidents_key()):
+            views_preparing = True
         if country:
             all_diss = [d for d in all_diss if all_outlets.get(d.get("outlet_id")) and all_outlets[d["outlet_id"]].country == country]
         diss = [d for d in all_diss if d["deviation"] > 0.35][:6]
@@ -211,12 +224,13 @@ def build(db: Session, country: str | None = None) -> dict:
         log.exception("dashboard: dissidents")
         diss, dissident_threshold_met = [], False
     try:
-        ents = cartography.entities(db, days=30, limit=40, country=country, cap=1500)["entities"]
+        ents_payload = cartography.entities(db, days=30, limit=40, country=country, cap=1500)
+        views_preparing = views_preparing or bool(ents_payload.get("preparing"))
+        ents = ents_payload["entities"]
         min_outlets = 2 if country else 3
         divisive = []
         for e in sorted([e for e in ents if e["outlets"] >= min_outlets], key=lambda e: -e["spread"])[:6]:
             cells = sorted([c for c in e.get("cells", []) if c["mentions"] >= 2], key=lambda c: c["valence"])
-            # copie : ne pas muter les objets du cache de la cartographie
             divisive.append({k: v for k, v in e.items() if k != "cells"} | {
                 "most_negative": cells[0] if cells else None,
                 "most_positive": cells[-1] if len(cells) > 1 else None,
@@ -294,6 +308,7 @@ def build(db: Session, country: str | None = None) -> dict:
     return {
         "generated_at": now.isoformat(),
         "country": country,
+        "views_preparing": views_preparing,
         "country_options": sorted({o.country for o in all_outlets.values() if o.country}),
         "kit": kit_pub,
         "kpis": {

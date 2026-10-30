@@ -20,8 +20,7 @@ from .extract import (
 
 log = logging.getLogger("tacite.rss")
 
-MAX_NEW_PER_RUN = 30
-MAX_NEW_PER_RUN_GOOGLE = 10  # chaque lien Google News coûte deux requêtes espacées : on reste discret
+MAX_NEW_PER_RUN = 250
 
 
 def _log(db: Session, outlet_id: int, feed_type: str, status: str, count: int = 0, error: str | None = None):
@@ -272,9 +271,9 @@ def _attach_bylines(db: Session, art: Article, outlet: Outlet, raw_html: str | N
         log.debug("byline from html failed %s: %s", art.url, e)
 
 
-def _usable_lead(text: str | None, title: str | None) -> str | None:
+def _usable_lead(text: str | None, title: str | None, min_len: int = EXCERPT_MIN) -> str | None:
     text = (text or "").strip()
-    if len(text) >= EXCERPT_MIN and not is_boilerplate(text, title):
+    if len(text) >= min_len and not is_boilerplate(text, title):
         return text
     return None
 
@@ -308,14 +307,14 @@ def _insert_article(db: Session, outlet: Outlet, url: str, title: str, published
 
 def _save_article(db: Session, outlet: Outlet, url: str, title: str,
                   published: datetime | None, author: str | None,
-                  fallback_text: str | None = None) -> bool:
+                  fallback_text: str | None = None, min_lead: int = EXCERPT_MIN) -> bool:
     """Pose le chapô du flux tout de suite. La page n'est lue que pour obtenir un corps,
     ou quand le flux n'a pas de chapô. Un chapô déjà stocké est remplacé si le corps arrive.
     """
     existing = _by_url(db, url)
     if existing and existing.text_coverage != "excerpt":
         return False
-    lead = _usable_lead(fallback_text, title)
+    lead = _usable_lead(fallback_text, title, min_lead)
     if existing is None and lead and not is_google_news_url(url):
         return _insert_article(db, outlet, url, title, published, author, lead, None, "excerpt")
     if existing is None and lead and is_google_news_url(url):
@@ -379,8 +378,7 @@ def _ingest_feed(db: Session, outlet: Outlet, feed_url: str, feed_type: str = "r
         if feed.bozo and not feed.entries:
             raise ValueError(f"invalid feed: {feed.bozo_exception}")
         count = 0
-        per_run = MAX_NEW_PER_RUN_GOOGLE if feed_type == "google_news" else MAX_NEW_PER_RUN
-        for entry in feed.entries[:per_run]:
+        for entry in feed.entries:
             url = entry.get("link")
             if not url:
                 continue
@@ -571,24 +569,34 @@ def _capture_google_entry(db: Session, outlet: Outlet, entry) -> str:
     return "skipped"
 
 
-def drain_google_news(db: Session, budget_s: float = 10 * 60, only_id: int | None = None) -> int:
+def drain_google_news(db: Session, budget_s: float = 10 * 60, only_id: int | None = None, outlet_ids: list[int] | None = None) -> int:
     """Décode les articles Google News encore inconnus, les plus récents d'abord, à tour de rôle.
 
     Un média dont le flux ou le sitemap a déjà fourni des articles est laissé de côté.
+    `outlet_ids` limite le lot : lister tous les médias dépasse le budget avant le premier décodage.
     Au premier refus de Google, on s'arrête sans marquer le titre comme vu : le cycle suivant reprend.
     """
     from .extract import google_blocked
 
     if google_blocked():
         return 0
+    if outlet_ids is not None and not outlet_ids:
+        return 0
     deadline = time.time() + budget_s
-    outlets = [
-        outlet for outlet in db.query(Outlet).all()
-        if outlet.website_url and not collection_suspended(outlet) and not _source_healthy(db, outlet)
-        and (only_id is None or outlet.id == only_id)
-    ]
+    if outlet_ids is not None:
+        wanted = {i: n for n, i in enumerate(outlet_ids)}
+        outlets = [o for o in db.query(Outlet).filter(Outlet.id.in_(list(wanted))).all() if o.website_url and not collection_suspended(o)]
+        outlets.sort(key=lambda o: wanted[o.id])
+    else:
+        outlets = [
+            outlet for outlet in db.query(Outlet).all()
+            if outlet.website_url and not collection_suspended(outlet) and not _source_healthy(db, outlet)
+            and (only_id is None or outlet.id == only_id)
+        ]
     queues = []
     for outlet in outlets:
+        if time.time() >= deadline:
+            break
         try:
             entries = _google_entries(outlet)
         except Exception as e:  # noqa: BLE001
@@ -676,7 +684,7 @@ def ingest_gdelt(db: Session, outlet: Outlet) -> int:
             time.sleep(GDELT_CALL_INTERVAL - elapsed)
         _last_gdelt_call = time.time()
         # GDELT API: search for articles from this domain
-        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query=domain:{quote(domain)}&mode=artlist&maxrecords={MAX_NEW_PER_RUN}&format=json&timespan=7d"
+        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query=domain:{quote(domain)}&mode=artlist&maxrecords={MAX_NEW_PER_RUN}&format=json&timespan=3m"
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=20) as client:
             resp = client.get(url)
             if resp.status_code == 429:
@@ -714,7 +722,7 @@ def ingest_gdelt(db: Session, outlet: Outlet) -> int:
 
 # ------------------------------------------------------------------- Sitemap
 
-def _get_bytes(url: str, timeout: float = 15.0, limit: int = 2_000_000) -> bytes | None:
+def _get_bytes(url: str, timeout: float = 20.0, limit: int = 20_000_000) -> bytes | None:
     try:
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=timeout) as client:
             with client.stream("GET", url) as resp:
@@ -751,59 +759,84 @@ def _sitemap_candidates(website: str, known: str | None) -> list[str]:
     return found
 
 
-def _remember_sitemap(db: Session, outlet: Outlet, url: str) -> None:
+def _sitemap_lead(article: dict) -> str | None:
+    """Titre gardé tout de suite, même court : la page sera lue plus tard si elle s'ouvre."""
+    lead = article_excerpt(article.get("title"), article.get("caption"), article.get("url") or "")
+    if lead:
+        return lead
+    title = re.sub(r"\s+", " ", (article.get("title") or "")).strip()
+    if len(title) >= 8 and not title.startswith("http") and title != article.get("url"):
+        return title[:2000]
+    slug = urlparse(article.get("url") or "").path.rstrip("/").split("/")[-1].replace("-", " ").replace("_", " ")
+    slug = re.sub(r"\s+", " ", slug).strip()
+    return slug[:500] if len(slug) >= 8 else None
+
+
+def _remember_sitemap_progress(db: Session, outlet: Outlet, used: str | None, done: list[str]) -> None:
     meta = dict(outlet.meta or {})
-    if meta.get("sitemap_url") == url:
-        return
-    meta["sitemap_url"] = url
+    if used:
+        meta["sitemap_url"] = used
+    if done:
+        prev = [url for url in (meta.get("sitemap_done") or []) if isinstance(url, str)]
+        for url in done:
+            if url not in prev:
+                prev.append(url)
+        meta["sitemap_done"] = prev[-800:]
     outlet.meta = meta
     db.commit()
 
 
 def ingest_sitemap(db: Session, outlet: Outlet) -> int:
-    """Articles récents listés dans le sitemap, pour un média sans flux RSS utilisable."""
-    if not outlet.website_url or collection_suspended(outlet) or _rss_healthy(db, outlet):
+    """Tous les articles listés dans le sitemap. Les archives reprennent au fichier suivant."""
+    if not outlet.website_url or collection_suspended(outlet):
         return 0
     known = (outlet.meta or {}).get("sitemap_url")
+    done = {url for url in ((outlet.meta or {}).get("sitemap_done") or []) if isinstance(url, str)}
     try:
         entries: list[dict] = []
         used = None
+        newly_done: list[str] = []
+        found_index: tuple[str, list[dict]] | None = None
+        found_urlset: tuple[str, list[dict]] | None = None
         for candidate in _sitemap_candidates(outlet.website_url, known):
             body = _get_bytes(candidate)
             if not body:
                 continue
             kind, items = parse_sitemap(body)
-            if kind == "urlset" and items:
-                entries = items
-                used = candidate
-                break
             if kind == "index" and items:
-                for child in rank_sitemap_children(items):
-                    child_body = _get_bytes(child["loc"])
-                    if not child_body:
-                        continue
-                    child_kind, child_items = parse_sitemap(child_body)
-                    if child_kind == "urlset" and child_items:
-                        entries.extend(child_items)
-                        used = used or child["loc"]
-                if entries:
-                    break
+                found_index = (candidate, items)
+                break
+            if kind == "urlset" and items and found_urlset is None:
+                found_urlset = (candidate, items)
+        if found_index:
+            used = found_index[0]
+            children = rank_sitemap_children(found_index[1])
+            news = [child for child in children if "news" in child["loc"].lower()]
+            archive = [child for child in children if child not in news and child["loc"] not in done][:6]
+            for child in news + archive:
+                child_body = _get_bytes(child["loc"])
+                if not child_body:
+                    continue
+                child_kind, child_items = parse_sitemap(child_body)
+                if child_kind == "urlset" and child_items:
+                    entries.extend(child_items)
+                    if child not in news:
+                        newly_done.append(child["loc"])
+        elif found_urlset:
+            used, entries = found_urlset
         articles = select_sitemap_articles(entries, outlet.website_url)
         known_urls = _known_urls(db, [article["url"] for article in articles])
         count = 0
         for article in articles:
             if article["url"] in known_urls:
                 continue
-            lead = article_excerpt(article.get("title"), article.get("caption"), article["url"])
-            saved = _save_article(db, outlet, article["url"], article["title"], article["published"], None)
-            if not saved and lead:
-                saved = _save_article(
-                    db, outlet, article["url"], article["title"], article["published"], None, fallback_text=lead,
-                )
-            if saved:
+            lead = _sitemap_lead(article)
+            if lead and _save_article(
+                db, outlet, article["url"], article["title"], article["published"], None,
+                fallback_text=lead, min_lead=8,
+            ):
                 count += 1
-        if used:
-            _remember_sitemap(db, outlet, used)
+        _remember_sitemap_progress(db, outlet, used, newly_done)
         _log(db, outlet.id, "sitemap", "ok", count)
         return count
     except Exception as e:  # noqa: BLE001

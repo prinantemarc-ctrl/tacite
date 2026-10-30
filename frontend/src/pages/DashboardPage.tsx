@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getDashboard } from "../api";
 import { readView, writeView } from "../viewCache";
@@ -52,6 +52,9 @@ export default function DashboardPage() {
     o === "success" ? t("dash.outcome_success") : o === "partial" ? t("dash.outcome_partial") : t("dash.outcome_failure")
   );
 
+  const preparingRef = useRef(false);
+  preparingRef.current = !!data?.views_preparing;
+
   useEffect(() => {
     try {
       if (country) localStorage.setItem(DASH_COUNTRY_KEY, country);
@@ -61,13 +64,19 @@ export default function DashboardPage() {
     setMapTheme(null);
     let cancelled = false;
     const cacheKey = `dashboard:${country || "all"}`;
-    readView<any>(cacheKey).then((cached) => { if (!cancelled && cached) setData(cached); });
+    readView<any>(cacheKey).then((cached) => { if (!cancelled && cached && !cached.views_preparing) setData(cached); });
     const load = () => getDashboard(country || undefined)
-      .then((d) => { if (!cancelled) { setData(d); setError(null); writeView(cacheKey, d); } })
+      .then((d) => {
+        if (cancelled) return;
+        setData(d);
+        setError(null);
+        if (!d.views_preparing) writeView(cacheKey, d);
+      })
       .catch((e) => { if (!cancelled) setError(String(e)); });
     load();
-    const id = setInterval(load, 5 * 60 * 1000);
-    return () => { cancelled = true; clearInterval(id); };
+    const slow = setInterval(load, 5 * 60 * 1000);
+    const quick = setInterval(() => { if (preparingRef.current) load(); }, 8000);
+    return () => { cancelled = true; clearInterval(slow); clearInterval(quick); };
   }, [locale, country]);
 
   const countries = useMemo(() => {
@@ -87,6 +96,7 @@ export default function DashboardPage() {
   const stale = p.last_ingestion ? Date.now() - new Date(p.last_ingestion + "Z").getTime() > 6 * 3600 * 1000 : true;
   const recTotal = Object.values(cl.recommendations as Record<string, number>).reduce((a, b) => a + b, 0);
   const topicsQ = country ? `days=7&country=${country}` : "days=7";
+  const hold = data.views_preparing ? t("dash.preparing") : "";
   const kitLabel = data.kit?.label || (country ? t("dash.structuralKit") : "");
   const agendaToday: any[] = data.agenda_today || [];
   const agendaWeek: any[] = data.topics || [];
@@ -143,12 +153,12 @@ export default function DashboardPage() {
         <Card title={t("dash.agendaToday")} help={["topic_cluster", "topic_heat"]} aside={<Link to={`/topics?days=1${country ? `&country=${country}` : ""}`} className="hover:text-ink">{t("dash.agendaTodayAside")}</Link>}>
           {agendaToday.length ? (
             <ul className="divide-y divide-hair-soft">{agendaToday.map((row) => topicRow(row, agendaToday[0].articles || 1))}</ul>
-          ) : <Empty>{t("dash.noAgendaToday")}</Empty>}
+          ) : <Empty>{hold || t("dash.noAgendaToday")}</Empty>}
         </Card>
         <Card title={t("dash.agendaWeek")} help={["topic_cluster", "blindspot"]} aside={<Link to={`/topics?${topicsQ}`} className="hover:text-ink">{t("dash.agendaLink")}</Link>}>
           {agendaWeek.length ? (
             <ul className="divide-y divide-hair-soft">{agendaWeek.slice(0, 8).map((row: any) => topicRow(row, agendaWeek[0].articles || 1))}</ul>
-          ) : <Empty>{t("dash.noAnalyzed7d")}</Empty>}
+          ) : <Empty>{hold || t("dash.noAnalyzed7d")}</Empty>}
           {data.blind_spots.length > 0 && (
             <div className="mt-3 border-t border-hair-soft pt-2">
               <div className="label mb-1"><Term k="blindspot">{t("dash.blind")}</Term></div>
@@ -249,7 +259,7 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          ) : <Empty>{t("dash.notEnoughTopics")}</Empty>}
+          ) : <Empty>{hold || t("dash.notEnoughTopics")}</Empty>}
         </Card>
 
         <Card title={data.dissidents_above_threshold ? t("dash.dissidents") : t("dash.farthestJournalists")} help="dissident" aside={data.dissidents_above_threshold ? t("dash.gapAbove") : t("dash.noneAbove")}>
@@ -265,7 +275,7 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          ) : <Empty>{t("dash.noDissident")}</Empty>}
+          ) : <Empty>{hold || t("dash.noDissident")}</Empty>}
           {data.accessible.length > 0 && data.dissidents.length < 4 && (
             <div className="mt-3 border-t border-hair-soft pt-2">
               <div className="label mb-1"><Term k="accessibility">{t("dash.mostAccessible")}</Term></div>
@@ -295,7 +305,7 @@ export default function DashboardPage() {
                 </li>
               ))}
             </ul>
-          ) : <Empty>{t("dash.noEntity")}</Empty>}
+          ) : <Empty>{hold || t("dash.noEntity")}</Empty>}
         </Card>
       </div>
 

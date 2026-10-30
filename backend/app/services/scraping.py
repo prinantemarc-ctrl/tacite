@@ -13,7 +13,7 @@ from .rss import _match_or_create_journalist, _save_article
 
 log = logging.getLogger("tacite.scraping")
 
-MAX_NEW_PER_RUN = 20
+MAX_NEW_PER_RUN = 100
 
 # Playwright is optional — graceful fallback if not installed
 _pw_available = False

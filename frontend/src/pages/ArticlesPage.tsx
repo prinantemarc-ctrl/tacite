@@ -32,7 +32,7 @@ export default function ArticlesPage() {
   const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "");
   const [mode, setMode] = useState<"latest" | "search">("latest");
 
-  useEffect(() => { listOutlets().then(setOutlets); }, []);
+  useEffect(() => { listOutlets("brief").then(setOutlets); }, []);
 
   useEffect(() => {
     const next: Record<string, string> = {};

@@ -1,6 +1,7 @@
 export const fr = {
   carto: {
     title: "Paysage médiatique",
+    preparing: "Cette vue est en cours de préparation. Elle s'affichera dans un instant.",
     measuredLines: "Lignes mesurées",
     sub1: ", réseaux d'",
     influenceWord: "influence",
@@ -184,6 +185,7 @@ export const fr = {
 export const en = {
   carto: {
     title: "Media landscape",
+    preparing: "This view is being prepared. It will appear in a moment.",
     measuredLines: "Measured lines",
     sub1: ", ",
     influenceWord: "influence",

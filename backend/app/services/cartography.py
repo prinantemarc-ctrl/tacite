@@ -1,8 +1,8 @@
 """Cartographie — projections, réseaux, agrégats géographiques et analyses structurelles.
 
 Tout est calculé à partir des données déjà en base (framing 12 axes des articles,
-citations, embeddings, entités). Les résultats sont mis en cache en mémoire pendant
-CACHE_TTL secondes : ce sont des vues, pas des états.
+citations, embeddings, entités). Les vues des pages sont des instantanés : le worker
+les recalcule, la requête HTTP ne fait que les lire.
 """
 
 from __future__ import annotations
@@ -32,7 +32,8 @@ _cache: dict[str, tuple[float, object]] = {}
 
 
 def _cached(key: str, fn):
-    key = f"{get_locale()}:{key}"
+    from ..tenant import current_user_id
+    key = f"{current_user_id()}:{get_locale()}:{key}"
     now = time.time()
     hit = _cache.get(key)
     if hit and now - hit[0] < CACHE_TTL:
@@ -180,6 +181,13 @@ def _outlet_index(db: Session) -> dict[int, Outlet]:
 
 def landscape(db: Session, weeks: int = 8, min_articles: int = 5, country: str | None = None, cap: int | None = None) -> dict:
     country = (country or "").upper() or None
+    weeks = int(weeks or 8)
+    if int(min_articles or 5) == 5 and weeks in (4, 8, 12, 26) and cap is None:
+        from . import prepared
+        hit = prepared.load(db, prepared.landscape_key(weeks, country))
+        if hit is not None:
+            return hit
+        return prepared.empty_landscape(weeks, country)
     return _cached(f"landscape:{weeks}:{min_articles}:{country}:{cap}", lambda: _landscape(db, weeks, min_articles, country, cap))
 
 
@@ -307,7 +315,20 @@ def _landscape(db: Session, weeks: int, min_articles: int, country: str | None =
 
 
 def dissidents(db: Session, weeks: int = 8, min_articles: int = 5, limit: int = 40, cap: int | None = None) -> list[dict]:
-    data = landscape(db, weeks, min_articles, cap=cap)
+    if int(weeks or 8) == 8 and int(min_articles or 5) == 5 and cap is None and 1 <= int(limit or 40) <= 40:
+        from . import prepared
+        hit = prepared.load(db, prepared.dissidents_key())
+        if hit is None:
+            return []
+        return list(hit)[: int(limit or 40)]
+    return _dissidents(db, int(weeks or 8), int(min_articles or 5), int(limit or 40), cap)
+
+
+def _dissidents(db: Session, weeks: int, min_articles: int, limit: int, cap: int | None) -> list[dict]:
+    return dissidents_from(db, _landscape(db, weeks, min_articles, None, cap), weeks, limit)
+
+
+def dissidents_from(db: Session, data: dict, weeks: int, limit: int) -> list[dict]:
     outlets = {o["id"]: o for o in data["outlets"]}
     rows = []
     for j in data["journalists"]:
@@ -354,6 +375,14 @@ def dissidents(db: Session, weeks: int = 8, min_articles: int = 5, limit: int = 
 
 
 def network(db: Session, days: int = 90, top_journalists: int = 60) -> dict:
+    days = int(days or 90)
+    top_journalists = int(top_journalists or 60)
+    if days == 90 and top_journalists == 60:
+        from . import prepared
+        hit = prepared.load(db, prepared.network_key(days, top_journalists))
+        if hit is not None:
+            return hit
+        return prepared.empty_network(days)
     return _cached(f"network:{days}:{top_journalists}", lambda: _network(db, days, top_journalists))
 
 
@@ -461,6 +490,13 @@ def _network(db: Session, days: int, top_journalists: int) -> dict:
 
 
 def world(db: Session, days: int = 30) -> dict:
+    days = int(days or 30)
+    if days == 30:
+        from . import prepared
+        hit = prepared.load(db, prepared.world_key(days))
+        if hit is not None:
+            return hit
+        return prepared.empty_world(days)
     return _cached(f"world:{days}", lambda: _world(db, days))
 
 
@@ -511,6 +547,14 @@ def _world(db: Session, days: int) -> dict:
 
 
 def corpus(db: Session, limit: int = 1500, days: int = 60) -> dict:
+    limit = int(limit or 1500)
+    days = int(days or 60)
+    if limit == 1500 and days == 60:
+        from . import prepared
+        hit = prepared.load(db, prepared.corpus_key(limit, days))
+        if hit is not None:
+            return hit
+        return prepared.empty_corpus()
     return _cached(f"corpus:{limit}:{days}", lambda: _corpus(db, limit, days))
 
 
@@ -570,6 +614,14 @@ def _corpus(db: Session, limit: int, days: int) -> dict:
 
 
 def leadlag(db: Session, days: int = 30, window_hours: int = 72, cap: int | None = None) -> dict:
+    days = int(days or 30)
+    window_hours = int(window_hours or 72)
+    if (days, window_hours, cap) in ((30, 72, None), (14, 72, 1500)):
+        from . import prepared
+        hit = prepared.load(db, prepared.leadlag_key(days, window_hours, cap))
+        if hit is not None:
+            return hit
+        return prepared.empty_leadlag(window_hours)
     return _cached(f"leadlag:{days}:{window_hours}:{cap}", lambda: _leadlag(db, days, window_hours, cap))
 
 
@@ -645,6 +697,13 @@ def _leadlag(db: Session, days: int, window_hours: int, cap: int | None = None) 
 
 
 def packs(db: Session, days: int = 60) -> dict:
+    days = int(days or 60)
+    if days == 60:
+        from . import prepared
+        hit = prepared.load(db, prepared.packs_key(days))
+        if hit is not None:
+            return hit
+        return prepared.empty_packs()
     return _cached(f"packs:{days}", lambda: _packs(db, days))
 
 
@@ -716,6 +775,21 @@ def _packs(db: Session, days: int) -> dict:
 
 def entities(db: Session, days: int = 60, limit: int = 40, country: str | None = None, cap: int | None = None) -> dict:
     country = (country or "").upper() or None
+    days = int(days or 60)
+    limit = int(limit or 40)
+    from . import prepared
+    if cap is None and days == 60 and 1 <= limit <= 80:
+        hit = prepared.load(db, prepared.entities_key(60, 80, country, None))
+        if hit is not None:
+            if limit < 80:
+                hit = {**hit, "entities": (hit.get("entities") or [])[:limit]}
+            return hit
+        return prepared.empty_entities()
+    if days == 30 and limit == 40 and cap == 1500:
+        hit = prepared.load(db, prepared.entities_key(30, 40, country, 1500))
+        if hit is not None:
+            return hit
+        return prepared.empty_entities()
     return _cached(f"entities:{days}:{limit}:{country}:{cap}", lambda: _entities(db, days, limit, country, cap))
 
 

@@ -83,6 +83,7 @@ export const fr = {
     opsToggle: "Collecte, file, coûts",
     mapHint: "Cliquer une famille ouvre la carte des sujets.",
     noAgendaToday: "Aucun sujet analysé sur 24 h.",
+    preparing: "Ces blocs sont en cours de préparation. Les chiffres de collecte sont déjà à jour.",
     nArts: "{n} articles",
   },
 };
@@ -172,6 +173,7 @@ export const en = {
     opsToggle: "Collection, queue, costs",
     mapHint: "Click a family to open the topics map.",
     noAgendaToday: "No topic analysed in 24 h.",
+    preparing: "These blocks are being prepared. Collection figures are already up to date.",
     nArts: "{n} articles",
   },
 };

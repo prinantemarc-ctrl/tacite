@@ -59,7 +59,7 @@ export default function JournalistsPage() {
     setParams(next, { replace: true });
   };
 
-  const load = () => Promise.all([listJournalists(), listOutlets()]).then(([j, o]) => { setJournalists(j); setOutlets(o); }).finally(() => setLoading(false));
+  const load = () => Promise.all([listJournalists(), listOutlets("brief")]).then(([j, o]) => { setJournalists(j); setOutlets(o); }).finally(() => setLoading(false));
   useEffect(() => { load(); }, []);
   useEffect(() => { getSettings().then((s) => { if (s?.accessibility_pitch_threshold != null) setPitch(Number(s.accessibility_pitch_threshold)); }).catch(() => {}); }, []);
 

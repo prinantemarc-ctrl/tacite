@@ -104,7 +104,8 @@ export async function streamMessage(cid: number, text: string, attachments: { na
 }
 
 // Outlets
-export const listOutlets = () => request<any[]>("/outlets");
+export const listOutlets = (view: "brief" | "full" = "full") =>
+  request<any[]>(view === "brief" ? "/outlets?view=brief" : "/outlets");
 export const getOutlet = (id: number) => request<any>(`/outlets/${id}`);
 export const createOutlet = (data: any) => request<any>("/outlets", { method: "POST", body: JSON.stringify(data) });
 export const updateOutlet = (id: number, data: any) => request<any>(`/outlets/${id}`, { method: "PUT", body: JSON.stringify(data) });

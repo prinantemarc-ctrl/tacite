@@ -63,7 +63,7 @@ SOURCE_TYPES = [
 DEFAULT_SETTINGS = {
     "rss_interval_minutes": 15,
     "scrape_interval_minutes": 60,
-    "analysis_batch_size": 50,
+    "analysis_batch_size": 100,
     "min_text_length_for_llm": 400,
     "llm_model": "aleria",
     "llm_profile_model": "aleria",

@@ -51,8 +51,43 @@ def _init_db_as_owner():
         """UPDATE journalists SET beat = substring(bio from '\\[([^\\]]+)\\]')
            WHERE beat IS NULL AND bio LIKE '[%]%'""",
         "ALTER TABLE outlets DROP CONSTRAINT IF EXISTS outlets_name_key",
+        "CREATE INDEX IF NOT EXISTS ix_articles_outlet_id ON articles (outlet_id)",
+        "CREATE INDEX IF NOT EXISTS ix_journalists_outlet_id ON journalists (outlet_id)",
         """CREATE INDEX IF NOT EXISTS articles_embedding_hnsw
            ON articles USING hnsw (embedding vector_cosine_ops)""",
+    ):
+        try:
+            with engine.connect() as conn:
+                conn.execute(text("SET LOCAL lock_timeout = '2s'"))
+                conn.execute(text(stmt))
+                conn.commit()
+        except Exception:
+            pass
+    _ensure_prepared_view_rls()
+
+
+def _ensure_prepared_view_rls():
+    """migrate() s'arrête dès que l'isolation existe : une table nouvelle doit être accordée ici."""
+    from .tenant import ROLE
+
+    for stmt in (
+        f"GRANT SELECT, INSERT, UPDATE, DELETE ON prepared_views TO {ROLE}",
+        f"GRANT USAGE, SELECT ON SEQUENCE prepared_views_id_seq TO {ROLE}",
+        "ALTER TABLE prepared_views ENABLE ROW LEVEL SECURITY",
+        "ALTER TABLE prepared_views FORCE ROW LEVEL SECURITY",
+        "DROP POLICY IF EXISTS tenant_all ON prepared_views",
+        """
+        CREATE POLICY tenant_all ON prepared_views
+        FOR ALL
+        USING (
+          current_setting('app.bypass', true) = 'on'
+          OR user_id = NULLIF(current_setting('app.user_id', true), '')::int
+        )
+        WITH CHECK (
+          current_setting('app.bypass', true) = 'on'
+          OR user_id = NULLIF(current_setting('app.user_id', true), '')::int
+        )
+        """,
     ):
         try:
             with engine.connect() as conn:

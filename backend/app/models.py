@@ -99,7 +99,7 @@ class Journalist(HasTenant, Base):
     __tablename__ = "journalists"
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False)
-    outlet_id = Column(Integer, ForeignKey("outlets.id"), nullable=False)
+    outlet_id = Column(Integer, ForeignKey("outlets.id"), nullable=False, index=True)
     role = Column(String, default="Journaliste")
     twitter_handle = Column(String)
     linkedin_url = Column(String)
@@ -115,7 +115,7 @@ class Article(HasTenant, Base):
     __tablename__ = "articles"
     __table_args__ = (UniqueConstraint("user_id", "url", name="articles_user_url_key"),)
     id = Column(Integer, primary_key=True)
-    outlet_id = Column(Integer, ForeignKey("outlets.id"), nullable=False)
+    outlet_id = Column(Integer, ForeignKey("outlets.id"), nullable=False, index=True)
     journalist_id = Column(Integer, ForeignKey("journalists.id"), nullable=True)
     url = Column(String, nullable=False, index=True)
     title = Column(String)
@@ -346,6 +346,16 @@ class AgentAction(HasTenant, Base):
     applied_at = Column(DateTime)
 
 
+class PreparedView(HasTenant, Base):
+    """Instantané d'une vue (agenda, cartographie). L'API le lit, le worker l'écrit."""
+    __tablename__ = "prepared_views"
+    __table_args__ = (UniqueConstraint("user_id", "key", name="prepared_views_user_key"),)
+    id = Column(Integer, primary_key=True)
+    key = Column(String, nullable=False)
+    payload = Column(JSON, nullable=False)
+    computed_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Report(HasTenant, Base):
     """Brouillon de note : blocs éditables, PDF à l'export."""
     __tablename__ = "reports"
@@ -373,6 +383,6 @@ TENANT_MODELS = (
     JournalistProfile, OutletProfile, Client, ClientContact, ClientBlacklist,
     Recommendation, ActionHistory, IngestionLog, LLMUsage, Citation,
     JournalistContact, ContactScan, Conversation, Message, Artifact,
-    AgentAction, Report,
+    AgentAction, PreparedView, Report,
 )
 

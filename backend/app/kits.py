@@ -397,15 +397,38 @@ def kit_for_country(code: str | None, db=None) -> dict | None:
     return get_kit(kit_id_for_country(code, db), db)
 
 
-def axes_for_country(code: str | None, db=None) -> list[str]:
-    """Axes locaux affichés (radar, écarts). Pas la couche A, sauf si aucun kit."""
-    kit = kit_for_country(code, db)
+def _axes_of_kit(kit: dict | None, code: str) -> list[str]:
     if kit is None:
         return list(STRUCTURAL_IDS)
     ids = [a["id"] for a in (kit.get("axes") or [])]
-    if (kit.get("id") == "europe_west") and (code or "").upper() not in FR_AXIS_ZONE:
+    if kit.get("id") == "europe_west" and code not in FR_AXIS_ZONE:
         ids = [a for a in ids if a not in FR_SPECIFIC_AXES]
     return ids or list(STRUCTURAL_IDS)
+
+
+def axes_for_country(code: str | None, db=None) -> list[str]:
+    """Axes locaux affichés (radar, écarts). Pas la couche A, sauf si aucun kit."""
+    return _axes_of_kit(kit_for_country(code, db), (code or "").upper())
+
+
+def axes_for_countries(codes, db=None) -> dict[str, list[str]]:
+    """Même résultat que `axes_for_country`, en deux lectures de réglages pour tout le lot."""
+    overrides = _country_overrides(db) if db is not None else {}
+    custom = {c.get("id"): c for c in _custom_kits(db)} if db is not None else {}
+    out: dict[str, list[str]] = {}
+    for code in codes:
+        key = (code or "").upper()
+        if key in out:
+            continue
+        if key in overrides:
+            kit_id = overrides[key] or None
+        else:
+            kit_id = DEFAULT_COUNTRY_KIT.get(key)
+        kit = None
+        if kit_id and kit_id != STRUCTURAL_ONLY_ID:
+            kit = BUILTIN_KITS.get(kit_id) or custom.get(kit_id)
+        out[key] = _axes_of_kit(kit, key)
+    return out
 
 
 def extract_axes_for_country(code: str | None, db=None) -> list[dict]:

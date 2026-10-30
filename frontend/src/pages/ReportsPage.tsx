@@ -32,7 +32,7 @@ export default function ReportsPage() {
   })), [t]);
 
   const refresh = () => { listArtifacts().then(setArts); listReports().then(setDrafts); };
-  useEffect(() => { refresh(); listOutlets().then(setOutlets); listJournalists().then(setJournalists); listClients().then(setClients); loadIsoCountries().then(setIso); }, []);
+  useEffect(() => { refresh(); listOutlets("brief").then(setOutlets); listJournalists().then(setJournalists); listClients().then(setClients); loadIsoCountries().then(setIso); }, []);
   useEffect(() => { setTarget(""); setCountry(""); }, [kind]);
 
   const followed = useMemo(() => {

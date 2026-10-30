@@ -4,7 +4,7 @@ Un cluster = une affaire, même si les libellés LLM diffèrent (« réforme des
 « âge légal », « pensions »). On réutilise les embeddings déjà calculés à l'analyse ;
 aucune nouvelle vectorisation.
 
-Les résultats sont mis en cache en mémoire (CACHE_TTL), comme la cartographie.
+Les pages lisent un instantané précalculé. Le cache mémoire ne sert qu'aux filtres étroits.
 """
 
 from __future__ import annotations
@@ -87,7 +87,8 @@ _cache: dict[str, tuple[float, object]] = {}
 
 
 def _cached(key: str, fn):
-    key = f"{get_locale()}:{key}"
+    from ..tenant import current_user_id
+    key = f"{current_user_id()}:{get_locale()}:{key}"
     now = time.time()
     hit = _cache.get(key)
     if hit and now - hit[0] < CACHE_TTL:
@@ -1378,6 +1379,22 @@ def _public_agenda(data: dict) -> dict:
 # ───────────────────────────────────────────────────────────── query
 
 
+LIVE_CAP = 400
+
+
+def _empty_agenda(days: int, country: str | None) -> dict:
+    now = datetime.utcnow()
+    since = now - timedelta(days=days)
+    return {
+        "since": since.date().isoformat(), "until": now.date().isoformat(), "days": days,
+        "threshold": SIM_THRESHOLD, "theme_threshold": THEME_THRESHOLD,
+        "n_articles": 0, "n_clustered": 0, "n_singletons": 0, "n_themes": 0, "n_themes_all": 0,
+        "explained_variance": [], "clusters": [], "points": [], "themes": [], "edges": [],
+        "filters": {"country": country, "outlet_id": None, "journalist_id": None},
+        "preparing": True,
+    }
+
+
 def agenda(
     db: Session,
     days: int = 7,
@@ -1390,14 +1407,30 @@ def agenda(
     q: str | None = None,
     cap: int | None = None,
 ) -> dict:
+    """Fenêtres habituelles : lecture de l'instantané. Un filtre média ou journaliste recalcule, plafonné.
+
+    ``briefs`` et ``cap`` ne relancent plus le modèle : les briefs sont écrits par le worker.
+    """
+    del briefs, cap
     days = max(1, min(int(days or 7), MAX_DAYS))
-    min_articles = 1 if include_singletons else max(1, int(min_articles or MIN_CLUSTER))
     country = (country or "").upper() or None
-    cap_n = MAX_ARTICLES if not cap else max(50, min(int(cap), MAX_ARTICLES))
-    key = f"agenda:{days}:{country}:{outlet_id}:{journalist_id}:{min_articles}:{include_singletons}:{cap_n}"
-    data = _cached(key, lambda: _agenda(db, days, country, outlet_id, journalist_id, min_articles, include_singletons, cap_n))
-    if briefs:
-        data = _cached(f"{key}:briefs", lambda: _with_briefs(db, data))
+    singleton = bool(include_singletons)
+    floor = 1 if singleton else max(1, int(min_articles or MIN_CLUSTER))
+    from . import prepared
+
+    standard = (
+        not outlet_id and not journalist_id and not singleton
+        and floor == MIN_CLUSTER and days in prepared.AGENDA_CAP
+    )
+    if standard:
+        data = prepared.load(db, prepared.agenda_key(days, country))
+        if data is None:
+            return _empty_agenda(days, country)
+    else:
+        data = _cached(
+            f"agenda-live:{days}:{country}:{outlet_id}:{journalist_id}:{floor}:{singleton}:{LIVE_CAP}",
+            lambda: _agenda(db, days, country, outlet_id, journalist_id, floor, singleton, LIVE_CAP),
+        )
     out = _public_agenda(data)
     query = (q or "").strip()
     if query:

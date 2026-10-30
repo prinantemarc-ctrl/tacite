@@ -3,12 +3,10 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from urllib.parse import urlparse
 from xml.etree import ElementTree as ET
 
-MAX_ARTICLES = 1000
-_MAX_AGE = timedelta(days=14)
 _SKIP_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf", ".xml", ".mp4", ".css", ".js", ".svg")
 _SKIP_PARTS = {"tag", "tags", "author", "authors", "category", "categories", "login", "subscribe", "search", "newsletter"}
 
@@ -115,8 +113,7 @@ def _is_article(url: str, news: bool) -> bool:
 
 
 def select_sitemap_articles(entries: list[dict], website: str, now: datetime | None = None) -> list[dict]:
-    """Garde les URLs d'articles récentes du même site."""
-    now = now or datetime.utcnow()
+    """Garde les URLs d'articles du même site, y compris les archives."""
     chosen = []
     seen: set[str] = set()
     for entry in entries:
@@ -125,18 +122,13 @@ def select_sitemap_articles(entries: list[dict], website: str, now: datetime | N
             continue
         if not _is_article(url, bool(entry.get("news"))):
             continue
-        published = _parse_when(entry.get("published"))
-        if published and now - published > _MAX_AGE:
-            continue
         seen.add(url)
         chosen.append({
             "url": url,
             "title": entry.get("title") or url,
             "caption": entry.get("caption"),
-            "published": published,
+            "published": _parse_when(entry.get("published")),
         })
-        if len(chosen) >= MAX_ARTICLES:
-            break
     return chosen
 
 
@@ -184,7 +176,7 @@ def google_article_id(url: str) -> str | None:
 
 
 def rank_sitemap_children(items: list[dict]) -> list[dict]:
-    """Dans un index, les sitemaps d'actualités d'abord, huit au plus."""
-    ranked = sorted(items, key=lambda item: _child_score(item["loc"]), reverse=True)
-    chosen = [item for item in ranked if _child_score(item["loc"]) > 0][:8]
+    """Sitemaps d'actualités d'abord, puis les archives. Les sitemaps d'images sont écartés."""
+    ranked = sorted(items, key=lambda item: (_child_score(item["loc"]), item.get("lastmod") or ""), reverse=True)
+    chosen = [item for item in ranked if _child_score(item["loc"]) >= 0]
     return chosen or ranked[:1]

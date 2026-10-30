@@ -1,6 +1,7 @@
 """Récap médias : sujets, écart max. signé, confiance."""
 
 from app.constants import axes_for_country
+from app.kits import axes_for_countries
 from app.services.profiles import confidence_label, max_usable_gap, topics_from_extracted
 
 
@@ -55,3 +56,19 @@ class TestTopics:
     def test_accepts_raw_lists(self):
         top = topics_from_extracted([[{"label": "Ukraine"}]], n=1)
         assert top == [{"label": "Ukraine", "count": 1}]
+
+
+class TestAxesBatch:
+    def test_matches_single_country_lookup(self):
+        batched = axes_for_countries(["FR", "DE", "US", "FR", ""])
+        assert batched["FR"] == axes_for_country("FR")
+        assert batched["DE"] == axes_for_country("DE")
+        assert batched["US"] == axes_for_country("US")
+        assert batched[""] == axes_for_country(None)
+
+    def test_gap_uses_precomputed_axes(self):
+        gaps = {"secularism": 0.9, "economy": 0.3}
+        axis_n = {k: 20 for k in gaps}
+        usable = axes_for_countries(["DE"])["DE"]
+        g = max_usable_gap("DE", gaps, axis_n, usable=usable)
+        assert g["axis"] == "economy"

@@ -81,11 +81,11 @@ def _latest_profiles(db: Session, outlet_ids: list[int] | None = None) -> dict[i
     return {p.outlet_id: p for p in q.all()}
 
 
-def _outlet_brief(o: Outlet, p: OutletProfile | None, recap: dict | None = None, db=None) -> dict:
+def _outlet_brief(o: Outlet, p: OutletProfile | None, recap: dict | None = None, db=None, *, usable: list[str] | None = None) -> dict:
     d = {"id": o.id, "name": o.name, "country": o.country, "language": o.language, "declared_orientation": o.declared_orientation,
          "influence": _f(o.influence_score, 1), "influence_rank": o.influence_rank, "website": o.website_url}
     if p:
-        g = profiles.max_usable_gap(o.country, p.gap_from_official, p.axis_n, db)
+        g = profiles.max_usable_gap(o.country, p.gap_from_official, p.axis_n, db, usable=usable)
         if g:
             d["max_gap"] = g
         d["articles_week"] = p.article_count
@@ -165,16 +165,25 @@ def _find_client(db: Session, ident) -> Client | None:
 
 # ═══════════════════════════════════════════════════════════════ LECTURE — médias
 
-@tool("list_outlets", "Liste des médias suivis avec influence, orientation déclarée, écart max (axe + valeur), confiance, sujets de prédilection (8 semaines) et journalistes les plus actifs.",
+@tool("list_outlets", "Liste des médias suivis : influence, orientation déclarée, écart max (axe + valeur), confiance. Pour les sujets et les journalistes d'un titre, appeler get_outlet.",
       {"country": {"type": "string", "description": "Code ISO-2 (FR, DE, GB…) pour filtrer, optionnel"}})
 def list_outlets(db, args, ctx):
+    from ..kits import axes_for_countries
     q = db.query(Outlet)
     if args.get("country"):
         q = q.filter(Outlet.country == args["country"].upper())
-    rows = q.order_by(Outlet.influence_score.desc()).all()
-    profs = _latest_profiles(db)
-    recaps = profiles.recap_for_outlets(db, [o.id for o in rows])
-    return {"outlets": [_outlet_brief(o, profs.get(o.id), recaps.get(o.id), db) for o in rows], "count": len(rows)}
+    rows = q.order_by(Outlet.influence_score.desc(), Outlet.name.asc()).all()
+    if not rows:
+        return {"outlets": [], "count": 0}
+    profs = _latest_profiles(db, [o.id for o in rows])
+    axes = axes_for_countries((o.country for o in rows), db)
+    return {
+        "outlets": [
+            _outlet_brief(o, profs.get(o.id), usable=axes.get((o.country or "").upper()))
+            for o in rows
+        ],
+        "count": len(rows),
+    }
 
 
 @tool("get_outlet", "Fiche complète d'un média : ligne déclarée et mesurée sur les 12 axes, écarts, composantes d'influence, dérives, trajectoire hebdomadaire, journalistes principaux, qui il cite / qui le cite.",
