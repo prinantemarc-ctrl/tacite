@@ -222,13 +222,16 @@ def _pass_sitemap(db, last_run: dict[str, datetime]) -> None:
     now = datetime.utcnow()
     eligible = {o.id for o in active if o.website_url}
     batch = _pick(active, eligible, int(cursors.get("sitemap") or 0), SITEMAP_BATCH, _last_logs(db, "sitemap%"), now - timedelta(minutes=20), empty)
+    pending = db.query(func.count(Article.id)).filter(Article.analysis_status == "pending").scalar() or 0
+    # L'historique reprend seulement quand l'analyse a de la place. L'actualité passe toujours.
+    archives = int(pending) < 4000
     if batch:
-        log.info("Sitemap batch: %s", ", ".join(o.name for o in batch))
+        log.info("Sitemap batch (archives=%s, file=%s): %s", archives, int(pending), ", ".join(o.name for o in batch))
         for o in batch:
             try:
                 if not rss._rss_healthy(db, o) and rss.recover_feeds(db, o):
                     rss.ingest_outlet_rss(db, o)
-                rss.ingest_sitemap(db, o)
+                rss.ingest_sitemap(db, o, archives=archives)
             except Exception as e:
                 log.warning("Sitemap error for %s: %s", o.name, e)
                 db.rollback()

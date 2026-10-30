@@ -41,7 +41,7 @@ services:
     dockerContext: .
     dockerCommand: python -m app.worker
     region: frankfurt
-    plan: 1c-2g
+    plan: 2c-4g
     envVars:
       - key: DATABASE_URL
         fromDatabase:

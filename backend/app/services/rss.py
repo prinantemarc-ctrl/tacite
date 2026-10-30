@@ -786,8 +786,8 @@ def _remember_sitemap_progress(db: Session, outlet: Outlet, used: str | None, do
     db.commit()
 
 
-def ingest_sitemap(db: Session, outlet: Outlet) -> int:
-    """Tous les articles listés dans le sitemap. Les archives reprennent au fichier suivant."""
+def ingest_sitemap(db: Session, outlet: Outlet, archives: bool = True) -> int:
+    """Articles du sitemap. `archives` faux : seulement l'actualité des derniers jours."""
     if not outlet.website_url or collection_suspended(outlet):
         return 0
     known = (outlet.meta or {}).get("sitemap_url")
@@ -812,7 +812,7 @@ def ingest_sitemap(db: Session, outlet: Outlet) -> int:
             used = found_index[0]
             children = rank_sitemap_children(found_index[1])
             news = [child for child in children if "news" in child["loc"].lower()]
-            archive = [child for child in children if child not in news and child["loc"] not in done][:6]
+            archive = [child for child in children if child not in news and child["loc"] not in done][:2] if archives else []
             for child in news + archive:
                 child_body = _get_bytes(child["loc"])
                 if not child_body:
@@ -825,6 +825,9 @@ def ingest_sitemap(db: Session, outlet: Outlet) -> int:
         elif found_urlset:
             used, entries = found_urlset
         articles = select_sitemap_articles(entries, outlet.website_url)
+        if not archives:
+            cutoff = datetime.utcnow() - timedelta(days=3)
+            articles = [article for article in articles if article.get("published") and article["published"] >= cutoff]
         known_urls = _known_urls(db, [article["url"] for article in articles])
         count = 0
         for article in articles:
