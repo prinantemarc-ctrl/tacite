@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
-  LayoutDashboard, Newspaper, Users, Briefcase, FileText, Settings, Map, BookOpen, Sparkles, FileOutput, Layers, X, Plus, Maximize2, LogOut,
+  LayoutDashboard, Newspaper, Users, Briefcase, FileText, Settings, Map, Globe2, BookOpen, Sparkles, FileOutput, Layers, X, Plus, Maximize2, LogOut,
 } from "lucide-react";
 import Chat from "./components/chat/Chat";
 import { ChatErrorBoundary } from "./components";
@@ -18,6 +18,7 @@ const NAV = [
   { to: "/outlets", labelKey: "nav.outlets", kindKey: "nav.kOutlets", icon: Newspaper },
   { to: "/journalists", labelKey: "nav.journalists", kindKey: "nav.kJournalists", icon: Users },
   { to: "/cartography", labelKey: "nav.cartography", kindKey: "nav.kCartography", icon: Map },
+  { to: "/horizon", labelKey: "nav.horizon", kindKey: "nav.kHorizon", icon: Globe2 },
   { to: "/topics", labelKey: "nav.topics", kindKey: "nav.kTopics", icon: Layers },
   { to: "/articles", labelKey: "nav.articles", kindKey: "nav.kArticles", icon: FileText },
   { to: "/clients", labelKey: "nav.clients", kindKey: "nav.kClients", icon: Briefcase },
@@ -30,7 +31,7 @@ export default function Layout() {
   const { t } = useI18n();
   const { pathname } = useLocation();
   const current = NAV.find((n) => (n.to === "/" ? pathname === "/" : pathname.startsWith(n.to)));
-  const fullBleed = pathname.startsWith("/assistant");
+  const fullBleed = pathname.startsWith("/assistant") || pathname.startsWith("/horizon");
   const [drawer, setDrawer] = useState(false);
   const [pageContext, setPageContext] = useState<{ page: string; label: string } | null>(null);
   const [account, setAccount] = useState("");

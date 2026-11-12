@@ -19,6 +19,7 @@ import ArticlesPage from "./pages/ArticlesPage";
 import ArticleDetailPage from "./pages/ArticleDetailPage";
 import SettingsPage from "./pages/SettingsPage";
 import CartographyPage from "./pages/CartographyPage";
+import HorizonPage from "./pages/HorizonPage";
 import TopicsPage from "./pages/TopicsPage";
 import MethodPage from "./pages/MethodPage";
 import AssistantPage from "./pages/AssistantPage";
@@ -46,6 +47,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
             <Route path="articles" element={<ArticlesPage />} />
             <Route path="articles/:id" element={<ArticleDetailPage />} />
             <Route path="cartography" element={<CartographyPage />} />
+            <Route path="horizon" element={<HorizonPage />} />
             <Route path="topics" element={<TopicsPage />} />
             <Route path="settings" element={<SettingsPage />} />
             <Route path="method" element={<MethodPage />} />

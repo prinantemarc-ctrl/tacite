@@ -53,6 +53,8 @@ export const fr = {
     pillar3Title: "3. Environnement informationnel (Propagation & Effets)",
     pillar3Refs: "OTAN — Approche ABCDE de l'environnement informationnel (2024) : Actor · Behaviour · Content · Degree · Effect",
     pillar3Body: "Analyse la circulation et l'impact : qualification des rôles d'acteurs (*Originator* / meneur 72 h, *Amplifier* à forte influence, *Interpreter*, *Counter-Actor*) ; distinction entre *Volume*, *Portée*, *Influence (0–100)* et *Momentum* ; séparation entre *effet observé*, *effet probable* et *effet potentiel* ; traduction en cibles et leviers d'influence pour le client.",
+    horizonTitle: "4. Horizon — lecture du monde et prévision courte",
+    horizonBody: "Horizon ne retient un dossier que s'il peut déboucher sur un fait politique ou économique : deux presses qui se répondent, un ballon d'essai, un sujet encore en marge, une matière ou un passage traité comme une affaire d'État. La fiche s'ouvre sur ce qui peut arriver, et dans quel délai. Le détail est dans tacite_horizon_doctrine.md.",
   },
 };
 
@@ -111,5 +113,7 @@ export const en = {
     pillar3Title: "3. Information Environment Analysis (Propagation & Effects)",
     pillar3Refs: "NATO — ABCDE Information-Environment Methodology (2024): Actor · Behaviour · Content · Degree · Effect",
     pillar3Body: "Analyses propagation, influence and effects: Actor roles (*Originator* / 72h first-mover, high-influence *Amplifier*, *Interpreter*, *Counter-Actor*); distinction between *Volume*, *Reach*, *Influence (0–100)* and *Momentum*; separation of *Observed*, *Likely* and *Potential* effects; translation into client risk exposure and actionable journalist levers.",
+    horizonTitle: "4. Horizon — world reading and short forecast",
+    horizonBody: "Horizon keeps a file only when it can lead to a political or economic fact: two presses answering each other, a trial balloon, a subject still on the margins, or a commodity or passage treated as a matter of state. The file opens on what can happen next, and by when. Detail is in tacite_horizon_doctrine.md.",
   },
 };
