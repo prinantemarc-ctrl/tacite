@@ -1549,6 +1549,21 @@ def map_world(days: int = Query(30, ge=1, le=365), db: Session = Depends(get_db)
     return cartography.world(db, days)
 
 
+@app.get("/api/horizon")
+def horizon(as_of: str | None = None, refresh: bool = False, db: Session = Depends(get_db)):
+    """Renseignement géopolitique, géoéconomique et prévision stratégique."""
+    from .services import horizon as horizon_svc
+    moment = None
+    if as_of:
+        try:
+            moment = datetime.fromisoformat(as_of)
+        except ValueError:
+            raise HTTPException(400, "as_of")
+        if len(as_of) <= 10:
+            moment = moment.replace(hour=23, minute=59, second=59)
+    return horizon_svc.build(db, moment, refresh=refresh)
+
+
 @app.get("/api/map/corpus")
 def map_corpus(limit: int = Query(1500, ge=50, le=5000), days: int = Query(60, ge=1, le=365), db: Session = Depends(get_db)):
     from .services import cartography

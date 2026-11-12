@@ -75,6 +75,10 @@ export default function MethodPage() {
               <p className="mt-2 text-[12px] leading-relaxed text-muted"><Emph text={t("method.pillar3Body")} /></p>
             </div>
           </div>
+          <div className="mt-4 rounded-sm border border-hair-soft bg-surface p-3.5">
+            <div className="text-[13px] font-semibold text-ink">{t("method.horizonTitle")}</div>
+            <p className="mt-2 text-[12px] leading-relaxed text-muted">{t("method.horizonBody")}</p>
+          </div>
         </Card>
       )}
 

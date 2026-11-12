@@ -12,6 +12,7 @@ import { fr as extraDashFr, en as extraDashEn } from "./bundles/dash";
 import { fr as extraMethodFr, en as extraMethodEn } from "./bundles/method";
 import { fr as extraChatFr, en as extraChatEn } from "./bundles/chat";
 import { fr as extraCountryFr, en as extraCountryEn } from "./bundles/country";
+import { fr as extraHorizonFr, en as extraHorizonEn } from "./bundles/horizon";
 
 export type Messages = Msg;
 
@@ -36,10 +37,10 @@ const frCore: Messages = {
   },
   nav: {
     dashboard: "Tableau de bord", assistant: "Assistant", outlets: "Médias", journalists: "Journalistes",
-    cartography: "Cartographie", topics: "Sujets", articles: "Articles", clients: "Clients",
+    cartography: "Cartographie", horizon: "Horizon", topics: "Sujets", articles: "Articles", clients: "Clients",
     reports: "Rapports", settings: "Paramètres", method: "Méthode",
     kDashboard: "Synthèse", kAssistant: "Assistant", kOutlets: "Fiches médias", kJournalists: "Fiches journalistes",
-    kCartography: "Cartographie", kTopics: "Agenda des sujets", kArticles: "Corpus", kClients: "Dossiers clients",
+    kCartography: "Cartographie", kHorizon: "Monde", kTopics: "Agenda des sujets", kArticles: "Corpus", kClients: "Dossiers clients",
     kReports: "Rapports et fichiers", kSettings: "Paramètres", kMethod: "Méthode",
   },
   common: {
@@ -331,10 +332,10 @@ const enCore: Messages = {
   },
   nav: {
     dashboard: "Dashboard", assistant: "Assistant", outlets: "Outlets", journalists: "Journalists",
-    cartography: "Map", topics: "Topics", articles: "Articles", clients: "Clients",
+    cartography: "Map", horizon: "Horizon", topics: "Topics", articles: "Articles", clients: "Clients",
     reports: "Reports", settings: "Settings", method: "Method",
     kDashboard: "Overview", kAssistant: "Assistant", kOutlets: "Outlet files", kJournalists: "Journalist files",
-    kCartography: "Landscape map", kTopics: "Topic agenda", kArticles: "Corpus", kClients: "Client files",
+    kCartography: "Landscape map", kHorizon: "World", kTopics: "Topic agenda", kArticles: "Corpus", kClients: "Client files",
     kReports: "Reports and files", kSettings: "Settings", kMethod: "Method",
   },
   common: {
@@ -641,5 +642,5 @@ export const TOOLS_EN: Record<string, string> = {
   update_settings: "settings", run_task: "task",
 };
 
-export const fr: Messages = [extraSettingsFr, extraOutletsFr, extraJournalistsFr, extraArticlesFr, extraClientsFr, extraReportsFr, extraCartoFr, extraDashFr, extraMethodFr, extraChatFr, extraCountryFr].reduce(deepMerge, frCore);
-export const en: Messages = [extraSettingsEn, extraOutletsEn, extraJournalistsEn, extraArticlesEn, extraClientsEn, extraReportsEn, extraCartoEn, extraDashEn, extraMethodEn, extraChatEn, extraCountryEn].reduce(deepMerge, enCore);
+export const fr: Messages = [extraSettingsFr, extraOutletsFr, extraJournalistsFr, extraArticlesFr, extraClientsFr, extraReportsFr, extraCartoFr, extraDashFr, extraMethodFr, extraChatFr, extraCountryFr, extraHorizonFr].reduce(deepMerge, frCore);
+export const en: Messages = [extraSettingsEn, extraOutletsEn, extraJournalistsEn, extraArticlesEn, extraClientsEn, extraReportsEn, extraCartoEn, extraDashEn, extraMethodEn, extraChatEn, extraCountryEn, extraHorizonEn].reduce(deepMerge, enCore);

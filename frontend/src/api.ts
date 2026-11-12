@@ -217,6 +217,13 @@ export const getMapDissidents = () => request<any>("/map/dissidents");
 export const getMapPacks = (days = 60) => request<any>(`/map/packs?days=${days}`);
 export const getMapEntities = (limit = 40) => request<any>(`/map/entities?limit=${limit}`);
 export const getMapTopics = (params?: string) => request<any>(`/map/topics${params ? `?${params}` : ""}`);
+export const getHorizon = (asOf?: string, refresh = false) => {
+  const qs = new URLSearchParams();
+  if (asOf) qs.set("as_of", asOf);
+  if (refresh) qs.set("refresh", "true");
+  const s = qs.toString();
+  return request<any>(`/horizon${s ? `?${s}` : ""}`);
+};
 
 // Journalists maintenance
 export const cleanupJournalists = () => request<any>("/journalists/cleanup", { method: "POST" });
